@@ -1,0 +1,1430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lift">
+<meta name="theme-color" content="#0a0a0b">
+<title>Lift</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon-180.png">
+<style>
+/* ============================================================
+   DESIGN TOKENS
+   ============================================================ */
+:root{
+  --bg:#0a0a0b;
+  --surface:#141416;
+  --surface-2:#1c1c1f;
+  --surface-3:#252529;
+  --line:#2a2a2e;
+  --line-soft:#212124;
+  --txt:#f2f2f3;
+  --txt-2:#a1a1a8;
+  --txt-3:#6b6b73;
+  --accent:#c8f542;
+  --accent-dim:#96b832;
+  --accent-ink:#0a0a0b;
+  --warn:#f5a742;
+  --bad:#f26060;
+  --blue:#5aa9f5;
+  --r-sm:10px; --r:14px; --r-lg:20px;
+  --safe-top:env(safe-area-inset-top,0px);
+  --safe-bot:env(safe-area-inset-bottom,0px);
+  --nav-h:58px;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Inter,system-ui,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overscroll-behavior-y:none}
+body{
+  background:var(--bg);color:var(--txt);font-family:var(--font);
+  font-size:16px;line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  padding-bottom:calc(var(--nav-h) + var(--safe-bot));
+}
+input,button,select,textarea{font-family:inherit;font-size:inherit;color:inherit;border:none;background:none;outline:none}
+button{cursor:pointer}
+::-webkit-scrollbar{display:none}
+
+/* ============================================================
+   LAYOUT
+   ============================================================ */
+.view{display:none;padding:0 16px 28px;animation:fade .18s ease}
+.view.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+.top{padding:calc(var(--safe-top) + 18px) 0 14px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.top h1{font-size:30px;font-weight:800;letter-spacing:-.9px;line-height:1.1}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--txt-3);margin-bottom:3px}
+
+.card{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r);padding:16px;margin-bottom:12px}
+.card.pad0{padding:0;overflow:hidden}
+.card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:10px}
+.card-h h2{font-size:15px;font-weight:700;letter-spacing:-.2px}
+.sub{font-size:13px;color:var(--txt-2);line-height:1.5}
+.mut{color:var(--txt-3)}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  min-height:52px;padding:0 20px;border-radius:var(--r);
+  background:var(--surface-2);border:1px solid var(--line);
+  font-size:16px;font-weight:600;letter-spacing:-.2px;width:100%;
+  transition:transform .1s,background .15s;
+}
+.btn:active{transform:scale(.975)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--bad);border-color:#3a2222}
+.btn.sm{min-height:40px;font-size:14px;padding:0 14px;border-radius:var(--r-sm);width:auto}
+.btn.xs{min-height:32px;font-size:13px;padding:0 11px;border-radius:9px;width:auto;font-weight:600}
+.btn[disabled]{opacity:.35;pointer-events:none}
+.row{display:flex;gap:8px}
+.row>*{flex:1}
+
+/* ============================================================
+   BOTTOM NAV
+   ============================================================ */
+nav{
+  position:fixed;left:0;right:0;bottom:0;z-index:60;
+  height:calc(var(--nav-h) + var(--safe-bot));
+  padding-bottom:var(--safe-bot);
+  background:rgba(14,14,16,.86);backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+  border-top:1px solid var(--line-soft);
+  display:flex;
+}
+nav button{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  color:var(--txt-3);font-size:10px;font-weight:600;letter-spacing:.2px;
+}
+nav button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav button.on{color:var(--accent)}
+
+/* ============================================================
+   HOME
+   ============================================================ */
+.hero{
+  background:linear-gradient(160deg,var(--surface-2),var(--surface));
+  border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;margin-bottom:12px;
+}
+.hero .tag{
+  display:inline-flex;align-items:center;gap:6px;background:rgba(200,245,66,.1);
+  color:var(--accent);font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;
+  padding:5px 10px;border-radius:99px;margin-bottom:12px;
+}
+.hero h2{font-size:26px;font-weight:800;letter-spacing:-.7px;margin-bottom:4px}
+.hero .meta{font-size:13.5px;color:var(--txt-2);margin-bottom:16px}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.stat{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r);padding:13px 12px}
+.stat b{display:block;font-size:23px;font-weight:800;letter-spacing:-.7px;margin-bottom:1px}
+.stat span{font-size:10.5px;color:var(--txt-3);font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+
+.dots{display:flex;gap:5px;justify-content:space-between}
+.dot{flex:1;aspect-ratio:1;max-width:20px;border-radius:6px;background:var(--surface-3)}
+.dot.a{background:var(--accent)}
+.dot.b{background:var(--warn)}
+.dot.today{box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--txt-3)}
+
+.blockbar{display:flex;gap:5px;margin-top:12px}
+.wk{flex:1;height:5px;border-radius:99px;background:var(--surface-3)}
+.wk.done{background:var(--accent-dim)}
+.wk.now{background:var(--accent)}
+.wk.deload{background:var(--blue)}
+
+/* ============================================================
+   EXERCISE LIST
+   ============================================================ */
+.ex{
+  display:flex;align-items:center;gap:12px;padding:14px 16px;
+  border-bottom:1px solid var(--line-soft);
+}
+.ex:last-child{border-bottom:none}
+.ex:active{background:var(--surface-2)}
+.ex-n{
+  width:27px;height:27px;flex:none;border-radius:9px;background:var(--surface-3);
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;color:var(--txt-2);
+}
+.ex-n.done{background:var(--accent);color:var(--accent-ink)}
+.ex-b{flex:1;min-width:0}
+.ex-b h3{font-size:15px;font-weight:600;letter-spacing:-.2px;margin-bottom:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ex-b p{font-size:12.5px;color:var(--txt-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ex-b p .hl{color:var(--txt-2)}
+.chev{color:var(--txt-3);flex:none}
+
+.slot-tag{
+  font-size:9.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;
+  color:var(--txt-3);background:var(--surface-3);padding:2px 6px;border-radius:5px;
+  display:inline-block;margin-bottom:5px;
+}
+.slot-tag.anchor{color:var(--accent);background:rgba(200,245,66,.09)}
+
+/* ============================================================
+   SET LOGGING
+   ============================================================ */
+.target{
+  background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px 16px;margin-bottom:12px;
+}
+.target .big{font-size:19px;font-weight:700;letter-spacing:-.4px;margin-bottom:3px}
+.target .why{font-size:12.5px;color:var(--txt-3);line-height:1.5}
+
+.setrow{
+  display:flex;align-items:center;gap:8px;padding:9px 0;
+  border-bottom:1px solid var(--line-soft);
+}
+.setrow:last-of-type{border-bottom:none}
+.setrow .idx{width:26px;flex:none;font-size:12.5px;font-weight:700;color:var(--txt-3)}
+.fld{
+  flex:1;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:11px 12px;display:flex;align-items:baseline;gap:6px;min-width:0;
+}
+.fld input{width:100%;font-size:18px;font-weight:700;letter-spacing:-.4px;
+  font-variant-numeric:tabular-nums;min-width:0}
+.fld input::placeholder{color:var(--txt-3);font-weight:600}
+.fld label{font-size:11px;color:var(--txt-3);font-weight:600;flex:none}
+.fld.filled{border-color:var(--accent-dim);background:rgba(200,245,66,.05)}
+.tick{
+  width:44px;height:44px;flex:none;border-radius:var(--r-sm);
+  background:var(--surface-2);border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;color:var(--txt-3);
+}
+.tick.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.tick svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2.6;
+  stroke-linecap:round;stroke-linejoin:round}
+
+/* ============================================================
+   REST TIMER
+   ============================================================ */
+.timer{
+  position:fixed;left:12px;right:12px;bottom:calc(var(--nav-h) + var(--safe-bot) + 12px);
+  z-index:55;background:var(--surface-3);border:1px solid var(--line);
+  border-radius:var(--r);padding:12px 16px;
+  display:none;align-items:center;gap:14px;
+  box-shadow:0 10px 30px rgba(0,0,0,.5);
+}
+.timer.on{display:flex}
+.timer .t{font-size:26px;font-weight:800;letter-spacing:-1px;font-variant-numeric:tabular-nums;min-width:74px}
+.timer .t.done{color:var(--accent)}
+.timer .lbl{flex:1;font-size:12px;color:var(--txt-3);font-weight:600;letter-spacing:.4px;text-transform:uppercase}
+.timer .bar{position:absolute;left:0;bottom:0;height:2.5px;background:var(--accent);
+  border-radius:0 0 var(--r) var(--r);transition:width 1s linear}
+
+/* ============================================================
+   SHEET (swap / detail)
+   ============================================================ */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:80;opacity:0;
+  pointer-events:none;transition:opacity .2s}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:90;
+  background:var(--surface);border-radius:var(--r-lg) var(--r-lg) 0 0;
+  border-top:1px solid var(--line);
+  max-height:86vh;overflow-y:auto;
+  padding:8px 16px calc(20px + var(--safe-bot));
+  transform:translateY(101%);transition:transform .26s cubic-bezier(.32,.72,0,1);
+}
+.sheet.on{transform:none}
+.grab{width:38px;height:4px;border-radius:99px;background:var(--surface-3);margin:6px auto 14px}
+.sheet h2{font-size:19px;font-weight:800;letter-spacing:-.5px;margin-bottom:3px}
+
+.chips{display:flex;gap:6px;overflow-x:auto;margin:12px -16px;padding:0 16px 2px}
+.chip{
+  flex:none;padding:8px 13px;border-radius:99px;background:var(--surface-2);
+  border:1px solid var(--line);font-size:13px;font-weight:600;color:var(--txt-2);
+}
+.chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+
+.alt{
+  display:flex;align-items:center;gap:12px;padding:13px 14px;margin-bottom:7px;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);
+}
+.alt:active{background:var(--surface-3)}
+.alt-b{flex:1;min-width:0}
+.alt-b h4{font-size:15px;font-weight:600;letter-spacing:-.2px;margin-bottom:2px}
+.alt-b p{font-size:12px;color:var(--txt-3)}
+.pill{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+  padding:3px 7px;border-radius:6px;background:var(--surface-3);color:var(--txt-3);flex:none}
+.pill.cur{background:rgba(200,245,66,.12);color:var(--accent)}
+.pill.hist{background:rgba(90,169,245,.12);color:var(--blue)}
+
+/* ============================================================
+   MISC
+   ============================================================ */
+.banner{
+  background:rgba(200,245,66,.07);border:1px solid rgba(200,245,66,.22);
+  border-radius:var(--r);padding:13px 15px;margin-bottom:12px;
+  display:flex;align-items:center;gap:12px;
+}
+.banner p{font-size:13.5px;font-weight:600;flex:1}
+.empty{text-align:center;padding:44px 20px;color:var(--txt-3)}
+.empty svg{width:38px;height:38px;stroke:currentColor;fill:none;stroke-width:1.4;margin-bottom:12px;opacity:.5}
+.empty p{font-size:14px;line-height:1.6}
+
+.wchart{width:100%;height:150px;display:block;margin:4px 0 2px}
+.seg{display:flex;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:var(--r-sm);padding:3px;gap:3px;margin-bottom:12px}
+.seg button{flex:1;padding:9px 0;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--txt-2)}
+.seg button.on{background:var(--surface-3);color:var(--txt)}
+
+.li{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line-soft)}
+.li:last-child{border-bottom:none}
+.li-b{flex:1;min-width:0}
+.li-b h3{font-size:14.5px;font-weight:600;margin-bottom:2px}
+.li-b p{font-size:12.5px;color:var(--txt-3)}
+.badge{width:30px;height:30px;flex:none;border-radius:9px;display:flex;align-items:center;
+  justify-content:center;font-size:12px;font-weight:800}
+.badge.a{background:rgba(200,245,66,.13);color:var(--accent)}
+.badge.b{background:rgba(245,167,66,.13);color:var(--warn)}
+
+.toggle{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;
+  border-bottom:1px solid var(--line-soft)}
+.toggle:last-child{border-bottom:none}
+.toggle span{font-size:14.5px;font-weight:500}
+.sw{width:48px;height:29px;border-radius:99px;background:var(--surface-3);position:relative;
+  flex:none;transition:background .2s}
+.sw::after{content:'';position:absolute;top:3px;left:3px;width:23px;height:23px;border-radius:99px;
+  background:#fff;transition:transform .2s}
+.sw.on{background:var(--accent)}
+.sw.on::after{transform:translateX(19px)}
+
+.toast{
+  position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--safe-bot) + 20px);
+  transform:translate(-50%,14px);z-index:200;
+  background:var(--surface-3);border:1px solid var(--line);border-radius:99px;
+  padding:11px 20px;font-size:13.5px;font-weight:600;
+  opacity:0;pointer-events:none;transition:all .22s;white-space:nowrap;
+  box-shadow:0 8px 24px rgba(0,0,0,.45);
+}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+
+<!-- ============ HOME ============ -->
+<section class="view on" id="v-home">
+  <div class="top">
+    <div><div class="eyebrow" id="h-date">—</div><h1>Today</h1></div>
+  </div>
+  <div id="h-body"></div>
+</section>
+
+<!-- ============ TRAIN ============ -->
+<section class="view" id="v-train">
+  <div id="t-body"></div>
+</section>
+
+<!-- ============ PROGRAM ============ -->
+<section class="view" id="v-prog">
+  <div class="top"><div><div class="eyebrow">Slots &amp; pools</div><h1>Program</h1></div></div>
+  <div class="seg" id="p-seg">
+    <button class="on" data-day="A">Lift A</button>
+    <button data-day="B">Lift B</button>
+  </div>
+  <div id="p-body"></div>
+</section>
+
+<!-- ============ BODY ============ -->
+<section class="view" id="v-body">
+  <div class="top"><div><div class="eyebrow">Wednesday weigh-in</div><h1>Body</h1></div></div>
+  <div id="b-body"></div>
+</section>
+
+<!-- ============ HISTORY ============ -->
+<section class="view" id="v-hist">
+  <div class="top"><div><div class="eyebrow">Every session</div><h1>History</h1></div></div>
+  <div class="seg" id="hi-seg">
+    <button class="on" data-f="all">All</button>
+    <button data-f="A">Lift A</button>
+    <button data-f="B">Lift B</button>
+  </div>
+  <div id="hi-body"></div>
+</section>
+
+<!-- ============ SETTINGS ============ -->
+<section class="view" id="v-set">
+  <div class="top"><div><div class="eyebrow">Data &amp; preferences</div><h1>Settings</h1></div></div>
+  <div id="s-body"></div>
+</section>
+
+<!-- ============ REST TIMER ============ -->
+<div class="timer" id="timer">
+  <div class="t num" id="timer-t">0:00</div>
+  <div class="lbl" id="timer-l">Rest</div>
+  <button class="btn xs ghost" id="timer-add">+30s</button>
+  <button class="btn xs" id="timer-skip">Skip</button>
+  <div class="bar" id="timer-bar" style="width:100%"></div>
+</div>
+
+<!-- ============ SHEET ============ -->
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet"><div class="grab"></div><div id="sheet-body"></div></div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ============ NAV ============ -->
+<nav id="nav">
+  <button class="on" data-v="home">
+    <svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+    <span>Home</span></button>
+  <button data-v="train">
+    <svg viewBox="0 0 24 24"><path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11"/></svg>
+    <span>Train</span></button>
+  <button data-v="prog">
+    <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    <span>Program</span></button>
+  <button data-v="body">
+    <svg viewBox="0 0 24 24"><path d="M4 17l5-6 4 4 7-8"/></svg>
+    <span>Body</span></button>
+  <button data-v="hist">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+    <span>History</span></button>
+</nav>
+
+<script>
+"use strict";
+/* ============================================================
+   1. STORAGE  —  IndexedDB, schema-versioned for future migration
+   ============================================================ */
+const DB_NAME='lift', DB_VER=1, SCHEMA_VERSION=2;
+let db=null;
+
+function openDB(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open(DB_NAME,DB_VER);
+    r.onupgradeneeded=e=>{
+      const d=e.target.result;
+      // sessions: one record per completed workout
+      if(!d.objectStoreNames.contains('sessions')){
+        const s=d.createObjectStore('sessions',{keyPath:'id'});
+        s.createIndex('date','date');
+      }
+      // bodyweights: keyed by ISO date, one per weigh-in
+      if(!d.objectStoreNames.contains('bodyweights'))
+        d.createObjectStore('bodyweights',{keyPath:'date'});
+      // kv: settings, block state, slot pins, active session, custom exercises
+      if(!d.objectStoreNames.contains('kv'))
+        d.createObjectStore('kv',{keyPath:'key'});
+    };
+    r.onsuccess=()=>{db=r.result;res()};
+    r.onerror=()=>rej(r.error);
+  });
+}
+const tx=(store,mode)=>db.transaction(store,mode).objectStore(store);
+const idbReq=r=>new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+const kvGet=async(k,dflt)=>{const v=await idbReq(tx('kv','readonly').get(k));return v===undefined?dflt:v.val};
+const kvSet=(k,val)=>idbReq(tx('kv','readwrite').put({key:k,val}));
+const allSessions=()=>idbReq(tx('sessions','readonly').getAll());
+const putSession=s=>idbReq(tx('sessions','readwrite').put(s));
+const delSession=id=>idbReq(tx('sessions','readwrite').delete(id));
+const allWeights=()=>idbReq(tx('bodyweights','readonly').getAll());
+const putWeight=w=>idbReq(tx('bodyweights','readwrite').put(w));
+const delWeight=d=>idbReq(tx('bodyweights','readwrite').delete(d));
+
+/* ============================================================
+   2. EXERCISE LIBRARY
+   Every exercise carries equipment so the swap sheet can filter
+   by what's actually free, and a `bump` = sensible load increment.
+   ============================================================ */
+const EQUIP={db:'Dumbbell',cable:'Cable',machine:'Machine',bar:'Barbell',bw:'Bodyweight',smith:'Smith'};
+const LIB={
+  // --- horizontal press ---
+  inc_db_press:{n:'Incline DB Press (30°)',e:'db',b:5},
+  flat_db_press:{n:'Flat DB Press',e:'db',b:5},
+  inc_mach_press:{n:'Incline Machine Press',e:'machine',b:10},
+  chest_press_mach:{n:'Seated Chest Press',e:'machine',b:10},
+  inc_bb_press:{n:'Incline Barbell Press',e:'bar',b:5},
+  weighted_dip:{n:'Weighted Dip',e:'bw',b:5},
+  smith_inc_press:{n:'Smith Incline Press',e:'smith',b:10},
+  // --- chest isolation ---
+  cable_fly_mid:{n:'Cable Fly (mid)',e:'cable',b:5},
+  cable_fly_low:{n:'Low-to-High Cable Fly',e:'cable',b:5},
+  cable_fly_high:{n:'High-to-Low Cable Fly',e:'cable',b:5},
+  pec_deck:{n:'Pec Deck',e:'machine',b:10},
+  inc_db_fly:{n:'Incline DB Fly',e:'db',b:2.5},
+  // --- knee dominant, unilateral ---
+  bulgarian:{n:'Bulgarian Split Squat',e:'db',b:5},
+  walking_lunge:{n:'Walking Lunge',e:'db',b:5},
+  reverse_lunge:{n:'Reverse Lunge',e:'db',b:5},
+  step_up:{n:'Dumbbell Step-Up',e:'db',b:5},
+  smith_split:{n:'Smith Split Squat',e:'smith',b:10},
+  // --- quad accessory ---
+  leg_ext:{n:'Leg Extension',e:'machine',b:10},
+  hack_squat:{n:'Hack Squat',e:'machine',b:20},
+  leg_press:{n:'Leg Press',e:'machine',b:20},
+  goblet_squat:{n:'Goblet Squat',e:'db',b:5},
+  pendulum_squat:{n:'Pendulum / V-Squat',e:'machine',b:20},
+  // --- vertical press ---
+  seated_db_ohp:{n:'Seated DB Shoulder Press',e:'db',b:5},
+  mach_ohp:{n:'Machine Shoulder Press',e:'machine',b:10},
+  arnold:{n:'Arnold Press',e:'db',b:5},
+  smith_ohp:{n:'Smith Shoulder Press',e:'smith',b:10},
+  landmine_press:{n:'Half-Kneeling Landmine Press',e:'bar',b:5},
+  // --- lateral delt ---
+  db_lat_raise:{n:'DB Lateral Raise',e:'db',b:2.5},
+  cable_lat_raise:{n:'Cable Lateral Raise',e:'cable',b:2.5},
+  mach_lat_raise:{n:'Machine Lateral Raise',e:'machine',b:5},
+  lean_lat_raise:{n:'Lean-Away Lateral Raise',e:'db',b:2.5},
+  // --- vertical pull ---
+  pullup:{n:'Pull-Up',e:'bw',b:5},
+  lat_pulldown:{n:'Lat Pulldown',e:'machine',b:10},
+  neutral_pulldown:{n:'Neutral-Grip Pulldown',e:'machine',b:10},
+  assisted_pullup:{n:'Assisted Pull-Up',e:'machine',b:10},
+  kneel_cable_pulldown:{n:'Kneeling Cable Pulldown',e:'cable',b:5},
+  // --- horizontal row ---
+  chest_supp_row:{n:'Chest-Supported Row',e:'machine',b:10},
+  seated_cable_row:{n:'Seated Cable Row',e:'cable',b:10},
+  one_arm_db_row:{n:'One-Arm DB Row',e:'db',b:5},
+  tbar_row:{n:'T-Bar Row',e:'bar',b:10},
+  mach_row:{n:'Machine Row',e:'machine',b:10},
+  // --- hinge / posterior ---
+  rdl:{n:'Romanian Deadlift',e:'bar',b:10},
+  db_rdl:{n:'DB Romanian Deadlift',e:'db',b:5},
+  hip_thrust:{n:'Hip Thrust',e:'bar',b:10},
+  seated_leg_curl:{n:'Seated Leg Curl',e:'machine',b:10},
+  lying_leg_curl:{n:'Lying Leg Curl',e:'machine',b:10},
+  back_ext:{n:'45° Back Extension',e:'bw',b:5},
+  // --- rear delt / upper back ---
+  face_pull:{n:'Face Pull',e:'cable',b:5},
+  rear_delt_mach:{n:'Reverse Pec Deck',e:'machine',b:5},
+  cable_rear_fly:{n:'Cable Rear Delt Fly',e:'cable',b:2.5},
+  bent_db_fly:{n:'Bent-Over DB Rear Fly',e:'db',b:2.5},
+  // --- biceps ---
+  inc_db_curl:{n:'Incline DB Curl',e:'db',b:2.5},
+  cable_curl:{n:'Cable Curl',e:'cable',b:5},
+  hammer_curl:{n:'Hammer Curl',e:'db',b:2.5},
+  preacher_curl:{n:'Preacher Curl',e:'machine',b:5},
+  ez_curl:{n:'EZ-Bar Curl',e:'bar',b:5},
+  // --- triceps ---
+  rope_pushdown:{n:'Rope Pushdown',e:'cable',b:5},
+  oh_cable_ext:{n:'Overhead Cable Extension',e:'cable',b:5},
+  skullcrusher:{n:'EZ Skullcrusher',e:'bar',b:5},
+  bar_pushdown:{n:'Straight-Bar Pushdown',e:'cable',b:5},
+  dip_mach:{n:'Triceps Dip Machine',e:'machine',b:10},
+};
+
+/* ============================================================
+   3. PROGRAM — movement slots, not fixed exercises.
+   anchor:true  -> stays put all 4 weeks, rotates at block edge
+   anchor:false -> swaps at week 3, giving mid-block variety
+   ============================================================ */
+const PROGRAM={
+  A:{name:'Lift A',focus:'Push + Quads',slots:[
+    {id:'a1',tag:'Horizontal Press',anchor:true, rest:105,sets:3,
+     pool:['inc_db_press','inc_mach_press','flat_db_press','inc_bb_press','chest_press_mach','smith_inc_press','weighted_dip']},
+    {id:'a2',tag:'Chest Isolation',anchor:false,rest:60,sets:3,
+     pool:['cable_fly_mid','pec_deck','cable_fly_low','inc_db_fly','cable_fly_high']},
+    {id:'a3',tag:'Knee — Unilateral',anchor:true, rest:105,sets:3,uni:true,
+     pool:['bulgarian','reverse_lunge','walking_lunge','step_up','smith_split']},
+    {id:'a4',tag:'Quad Accessory',anchor:false,rest:75,sets:3,
+     pool:['leg_ext','hack_squat','leg_press','pendulum_squat','goblet_squat']},
+    {id:'a5',tag:'Vertical Press',anchor:false,rest:75,sets:3,
+     pool:['seated_db_ohp','mach_ohp','arnold','smith_ohp','landmine_press']},
+    {id:'a6',tag:'Lateral Delt',anchor:false,rest:45,sets:3,
+     pool:['db_lat_raise','cable_lat_raise','mach_lat_raise','lean_lat_raise']},
+  ]},
+  B:{name:'Lift B',focus:'Pull + Hinge',slots:[
+    {id:'b1',tag:'Vertical Pull',anchor:true, rest:105,sets:3,
+     pool:['pullup','lat_pulldown','neutral_pulldown','kneel_cable_pulldown','assisted_pullup']},
+    {id:'b2',tag:'Horizontal Row',anchor:true, rest:90,sets:3,
+     pool:['chest_supp_row','seated_cable_row','one_arm_db_row','mach_row','tbar_row']},
+    {id:'b3',tag:'Hip Hinge',anchor:true, rest:105,sets:3,
+     pool:['rdl','db_rdl','hip_thrust','back_ext']},
+    {id:'b4',tag:'Hamstring / Rear',anchor:false,rest:60,sets:3,
+     pool:['seated_leg_curl','lying_leg_curl','back_ext','hip_thrust']},
+    {id:'b5',tag:'Rear Delt',anchor:false,rest:45,sets:3,
+     pool:['face_pull','rear_delt_mach','cable_rear_fly','bent_db_fly']},
+    {id:'b6',tag:'Elbow Flexion',anchor:false,rest:60,sets:3,
+     pool:['inc_db_curl','hammer_curl','cable_curl','preacher_curl','ez_curl']},
+    {id:'b7',tag:'Elbow Extension',anchor:false,rest:45,sets:3,
+     pool:['rope_pushdown','oh_cable_ext','bar_pushdown','skullcrusher','dip_mach']},
+  ]},
+};
+
+/* Rep waves across the 4-week block.
+   Heavier week 2, higher-rep week 3, week 4 repeats week 1's range
+   so you can go back and beat the numbers you already know. */
+const WAVE=[
+  {lo:8, hi:12, label:'Moderate',      note:'Base volume. Own the rep range.'},
+  {lo:6, hi:8,  label:'Heavy',         note:'Load up. Same movements, fewer reps.'},
+  {lo:12,hi:15, label:'Volume',        note:'Lighter, longer sets. Chase the pump.'},
+  {lo:8, hi:12, label:'Repeat & beat', note:"Week 1's range — add reps or weight."},
+];
+const DELOAD={lo:8,hi:10,label:'Deload',note:'Two sets, ~60% load. Let fatigue clear.'};
+
+/* ============================================================
+   4. ENGINE — dates, block math, exercise resolution, progression
+   ============================================================ */
+const DAY_MS=86400000;
+const iso=d=>{const x=new Date(d);x.setHours(12,0,0,0);
+  return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')};
+const today=()=>iso(new Date());
+const parseISO=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d,12)};
+const daysBetween=(a,b)=>Math.round((parseISO(b)-parseISO(a))/DAY_MS);
+const fmtDate=d=>parseISO(d).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+
+let ST={};  // in-memory app state
+
+/* Monday of the week containing `date` — the program's week boundary */
+function weekStart(dateStr){
+  const d=parseISO(dateStr);
+  const shift=(d.getDay()+6)%7;          // Mon=0 … Sun=6
+  return iso(new Date(d.getTime()-shift*DAY_MS));
+}
+/* How many program weeks have elapsed since the start date */
+function weekIndex(dateStr){
+  return Math.max(0,Math.floor(daysBetween(weekStart(ST.startDate),weekStart(dateStr))/7));
+}
+function blockInfo(dateStr){
+  const wi=weekIndex(dateStr);
+  const deloaded=ST.deloads.includes(wi);
+  const wk=wi%4;                          // 0-3 within the block
+  return {
+    weekIndex:wi,
+    block:Math.floor(wi/4),
+    weekInBlock:wk+1,
+    deload:deloaded,
+    wave:deloaded?DELOAD:WAVE[wk],
+  };
+}
+/* Which lift falls on this date?
+   A/B alternate M-W-F, and the pattern flips each week, so every
+   movement pattern gets trained ~1.5x per week rather than once. */
+const TRAIN_DAYS=[1,3,5]; // Mon, Wed, Fri
+function dayFor(dateStr){
+  const d=parseISO(dateStr), dow=d.getDay();
+  if(!TRAIN_DAYS.includes(dow)) return null;
+  const slot=TRAIN_DAYS.indexOf(dow);              // 0,1,2
+  const flip=weekIndex(dateStr)%2;                 // alternate weekly
+  return (slot+flip)%2===0?'A':'B';
+}
+function nextTrainingDay(fromStr){
+  for(let i=0;i<8;i++){
+    const s=iso(new Date(parseISO(fromStr).getTime()+i*DAY_MS));
+    if(dayFor(s)) return s;
+  }
+  return fromStr;
+}
+
+/* Resolve which exercise occupies a slot for a given block/week.
+   A manual pin always wins — that's the "I like this sub better" path. */
+function resolveExercise(slot,info){
+  const pin=ST.pins[slot.id];
+  if(pin && slot.pool.includes(pin)) return pin;
+  if(pin && LIB[pin]) return pin;
+  const p=slot.pool;
+  const i=slot.anchor
+    ? info.block % p.length                                  // rotate per block
+    : (info.block*2 + (info.weekInBlock>=3?1:0)) % p.length; // flip mid-block
+  return p[i];
+}
+/* Build the full prescription for one training day */
+function buildWorkout(dateStr,dayKey){
+  const info=blockInfo(dateStr);
+  const day=PROGRAM[dayKey];
+  return {
+    date:dateStr, day:dayKey, info,
+    name:day.name, focus:day.focus,
+    exercises:day.slots.map(slot=>{
+      const exId=resolveExercise(slot,info);
+      return {
+        slotId:slot.id, tag:slot.tag, anchor:slot.anchor, uni:slot.uni||false,
+        exId, name:LIB[exId]?LIB[exId].n:exId,
+        sets:info.deload?Math.max(2,slot.sets-1):slot.sets,
+        lo:info.wave.lo, hi:info.wave.hi,
+        rest:info.deload?Math.round(slot.rest*.8):slot.rest,
+        logged:[],
+      };
+    })
+  };
+}
+
+/* --- history lookups & progression -------------------------------- */
+function lastPerformance(exId){
+  for(let i=ST.sessions.length-1;i>=0;i--){
+    const e=ST.sessions[i].exercises.find(x=>x.exId===exId && x.logged.length);
+    if(e) return {sets:e.logged,date:ST.sessions[i].date};
+  }
+  return null;
+}
+function slotHistory(slotId){
+  const out=[];
+  ST.sessions.forEach(s=>s.exercises.forEach(e=>{
+    if(e.slotId===slotId && e.logged.length) out.push({date:s.date,exId:e.exId,sets:e.logged});
+  }));
+  return out;
+}
+const best=sets=>sets.reduce((b,s)=>{
+  const v=(s.weight||0)*(1+(s.reps||0)/30);       // Epley e1RM, for comparing across variants
+  return v>b.v?{v,set:s}:b;
+},{v:0,set:null}).set;
+
+/* Double progression: clear the top of the range on every set, load goes up. */
+function suggest(ex){
+  const last=lastPerformance(ex.exId);
+  if(!last) return {text:'First time — find a weight you can control for '+ex.lo+'–'+ex.hi+'.',w:null};
+  const bump=LIB[ex.exId]?LIB[ex.exId].b:5;
+  const w=last.sets[0].weight||0;
+  const cleared=last.sets.every(s=>(s.reps||0)>=ex.hi);
+  const summary=last.sets.map(s=>s.reps).join(', ');
+  if(ex.lo===8&&ex.hi===12&&cleared)
+    return {text:'Last: '+w+' × '+summary+' — cleared it. Go '+(w+bump)+' × '+ex.lo+'.',w:w+bump};
+  if(cleared) return {text:'Last: '+w+' × '+summary+' — add weight: '+(w+bump)+' × '+ex.lo+'.',w:w+bump};
+  return {text:'Last: '+w+' × '+summary+'. Target '+w+' × '+ex.hi+' across.',w:w};
+}
+
+/* ============================================================
+   5. UI HELPERS
+   ============================================================ */
+const $=s=>document.querySelector(s);
+const el=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const CHECK='<svg viewBox="0 0 24 24"><path d="M4 12.5l5.5 5.5L20 6.5"/></svg>';
+const CHEV='<svg class="chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg>';
+
+let toastT;
+function toast(msg){
+  const t=el('toast'); t.textContent=msg; t.classList.add('on');
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),1900);
+}
+function buzz(ms){ if(ST.settings.haptic && navigator.vibrate) navigator.vibrate(ms); }
+let audioCtx;
+function beep(){
+  if(!ST.settings.sound) return;
+  try{
+    audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
+    [0,180,360].forEach((delay,i)=>setTimeout(()=>{
+      const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.frequency.value=i===2?1050:780; o.type='sine';
+      g.gain.setValueAtTime(.0001,audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(.25,audioCtx.currentTime+.01);
+      g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+.28);
+      o.start(); o.stop(audioCtx.currentTime+.3);
+    },delay));
+  }catch(e){}
+}
+
+function showSheet(html){
+  el('sheet-body').innerHTML=html;
+  el('sheet').classList.add('on'); el('scrim').classList.add('on');
+}
+function hideSheet(){ el('sheet').classList.remove('on'); el('scrim').classList.remove('on'); }
+el('scrim').onclick=hideSheet;
+
+function go(v){
+  document.querySelectorAll('.view').forEach(s=>s.classList.remove('on'));
+  el('v-'+v).classList.add('on');
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  window.scrollTo(0,0);
+  ({home:renderHome,train:renderTrain,prog:renderProgram,body:renderBody,hist:renderHistory,set:renderSettings}[v])();
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
+
+/* ============================================================
+   6. REST TIMER — survives tab changes and a locked phone by
+   storing an absolute end timestamp rather than counting down.
+   ============================================================ */
+let timerEnd=0, timerTotal=0, timerInt=null;
+function startTimer(sec){
+  timerEnd=Date.now()+sec*1000; timerTotal=sec;
+  kvSet('timer',{end:timerEnd,total:sec});
+  el('timer').classList.add('on');
+  tickTimer();
+  clearInterval(timerInt); timerInt=setInterval(tickTimer,250);
+}
+function tickTimer(){
+  const left=Math.max(0,Math.round((timerEnd-Date.now())/1000));
+  const t=el('timer-t');
+  t.textContent=Math.floor(left/60)+':'+String(left%60).padStart(2,'0');
+  el('timer-bar').style.width=(timerTotal?100*left/timerTotal:0)+'%';
+  if(left<=0){
+    if(!t.classList.contains('done')){
+      t.classList.add('done'); el('timer-l').textContent='Go';
+      beep(); buzz([180,90,180]);
+    }
+  }else{ t.classList.remove('done'); el('timer-l').textContent='Rest'; }
+  if(left<=0 && Date.now()-timerEnd>12000) stopTimer();
+}
+function stopTimer(){
+  clearInterval(timerInt); timerInt=null; timerEnd=0;
+  el('timer').classList.remove('on'); el('timer-t').classList.remove('done');
+  kvSet('timer',null);
+}
+el('timer-skip').onclick=stopTimer;
+el('timer-add').onclick=()=>{ timerEnd+=30000; timerTotal+=30; kvSet('timer',{end:timerEnd,total:timerTotal}); tickTimer(); };
+
+/* ============================================================
+   7. HOME
+   ============================================================ */
+function renderHome(){
+  el('h-date').textContent=parseISO(today()).toLocaleDateString(undefined,
+    {weekday:'long',month:'long',day:'numeric'});
+  const t=today();
+  const info=blockInfo(t);
+  const scheduled=dayFor(t);
+  const active=ST.active;
+  const nextDate=scheduled?t:nextTrainingDay(t);
+  const dayKey=scheduled||dayFor(nextDate);
+  const p=PROGRAM[dayKey];
+
+  const doneToday=ST.sessions.some(s=>s.date===t);
+  const weekCount=ST.sessions.filter(s=>weekStart(s.date)===weekStart(t)).length;
+  const last=ST.sessions[ST.sessions.length-1];
+
+  // 14-day activity strip
+  let dots='';
+  for(let i=13;i>=0;i--){
+    const d=iso(new Date(parseISO(t).getTime()-i*DAY_MS));
+    const s=ST.sessions.find(x=>x.date===d);
+    dots+=`<div class="dot ${s?s.day.toLowerCase():''} ${d===t?'today':''}"></div>`;
+  }
+  // block progress bar
+  let wks='';
+  for(let i=0;i<4;i++){
+    const gi=info.block*4+i;
+    const cls=ST.deloads.includes(gi)?'deload':gi<info.weekIndex?'done':gi===info.weekIndex?'now':'';
+    wks+=`<div class="wk ${cls}"></div>`;
+  }
+
+  const heroTag = active ? 'In progress'
+    : doneToday ? 'Done today'
+    : scheduled ? 'Today' : 'Next up · '+fmtDate(nextDate);
+
+  el('h-body').innerHTML=`
+    <div class="hero">
+      <div class="tag">${esc(heroTag)}</div>
+      <h2>${esc(p.name)}</h2>
+      <div class="meta">${esc(p.focus)} · ${info.deload?'Deload week':'Week '+info.weekInBlock+' of 4'} · ${esc(info.wave.label)} ${info.wave.lo}–${info.wave.hi}</div>
+      <button class="btn primary" id="start-btn">${active?'Resume workout':doneToday?'Train again':'Start workout'}</button>
+      <div class="blockbar">${wks}</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><b class="num">${ST.sessions.length}</b><span>Sessions</span></div>
+      <div class="stat"><b class="num">${weekCount}/3</b><span>This week</span></div>
+      <div class="stat"><b class="num">${last?daysBetween(last.date,t):'—'}</b><span>Days since</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>Last 14 days</h2>
+        <span class="sub mut">Block ${info.block+1}</span></div>
+      <div class="dots">${dots}</div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>This week's focus</h2></div>
+      <p class="sub">${esc(info.wave.note)}</p>
+    </div>`;
+
+  el('start-btn').onclick=()=>{
+    if(!ST.active) ST.active=buildWorkout(t,dayKey);
+    saveActive(); go('train');
+  };
+}
+
+/* ============================================================
+   8. TRAIN — session overview + set logging
+   ============================================================ */
+let openEx=null;   // index of exercise being logged, null = list view
+const saveActive=()=>kvSet('active',ST.active);
+
+function renderTrain(){
+  const w=ST.active;
+  if(!w){
+    el('t-body').innerHTML=`
+      <div class="top"><div><div class="eyebrow">Not started</div><h1>Train</h1></div></div>
+      <div class="empty">
+        <svg viewBox="0 0 24 24"><path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11"/></svg>
+        <p>No workout in progress.<br>Head to Home and start one.</p>
+      </div>`;
+    return;
+  }
+  openEx===null?renderExList(w):renderExLog(w,openEx);
+}
+
+function renderExList(w){
+  const done=w.exercises.filter(e=>e.logged.length).length;
+  const rows=w.exercises.map((e,i)=>{
+    const last=lastPerformance(e.exId);
+    const detail=e.logged.length
+      ? '<span class="hl">'+e.logged.map(s=>s.weight+'×'+s.reps).join('  ')+'</span>'
+      : last ? 'Last: '+last.sets.map(s=>s.weight+'×'+s.reps).join(', ')
+      : 'No history yet';
+    return `<div class="ex" data-i="${i}">
+      <div class="ex-n ${e.logged.length>=e.sets?'done':''}">${e.logged.length>=e.sets?'✓':i+1}</div>
+      <div class="ex-b">
+        <div class="slot-tag ${e.anchor?'anchor':''}">${esc(e.tag)}${e.anchor?' · anchor':''}</div>
+        <h3>${esc(e.name)}</h3>
+        <p>${e.sets}×${e.lo}–${e.hi}${e.uni?'/side':''} · ${detail}</p>
+      </div>${CHEV}</div>`;
+  }).join('');
+
+  el('t-body').innerHTML=`
+    <div class="top">
+      <div><div class="eyebrow">${esc(w.info.deload?'Deload':'Week '+w.info.weekInBlock+' · '+w.info.wave.label)}</div>
+      <h1>${esc(w.name)}</h1></div>
+      <button class="btn xs ghost" id="abandon">Discard</button>
+    </div>
+    <div class="card" style="padding:14px 16px">
+      <div class="card-h" style="margin:0"><h2>${done} of ${w.exercises.length} complete</h2>
+      <span class="sub mut">${esc(w.focus)}</span></div>
+    </div>
+    <div class="card pad0">${rows}</div>
+    <button class="btn primary" id="finish" style="margin-top:4px">Finish workout</button>`;
+
+  el('t-body').querySelectorAll('.ex').forEach(n=>n.onclick=()=>{
+    openEx=+n.dataset.i; renderTrain(); window.scrollTo(0,0);
+  });
+  el('finish').onclick=finishWorkout;
+  el('abandon').onclick=()=>{
+    if(confirm('Discard this workout? Logged sets will be lost.')){
+      ST.active=null; openEx=null; saveActive(); stopTimer(); go('home');
+    }
+  };
+}
+
+function renderExLog(w,i){
+  const e=w.exercises[i];
+  const s=suggest(e);
+  const rows=[];
+  for(let k=0;k<e.sets;k++){
+    const L=e.logged[k];
+    rows.push(`<div class="setrow" data-k="${k}">
+      <div class="idx">${k+1}</div>
+      <div class="fld ${L?'filled':''}">
+        <input type="number" inputmode="decimal" step="0.5" class="w"
+          placeholder="${s.w!==null?s.w:'—'}" value="${L?L.weight:''}"><label>lbs</label></div>
+      <div class="fld ${L?'filled':''}">
+        <input type="number" inputmode="numeric" class="r"
+          placeholder="${e.hi}" value="${L?L.reps:''}"><label>reps</label></div>
+      <button class="tick ${L?'on':''}">${CHECK}</button>
+    </div>`);
+  }
+  const hist=slotHistory(e.slotId).slice(-8);
+
+  el('t-body').innerHTML=`
+    <div class="top">
+      <div><div class="eyebrow">${esc(e.tag)}</div><h1 style="font-size:24px">${esc(e.name)}</h1></div>
+      <button class="btn xs ghost" id="back">Back</button>
+    </div>
+    <div class="target">
+      <div class="big">${e.sets} × ${e.lo}–${e.hi}${e.uni?' per side':''} · ${e.rest}s rest</div>
+      <div class="why">${esc(s.text)}</div>
+    </div>
+    <div class="row" style="margin-bottom:14px">
+      <button class="btn sm" id="swap">Swap exercise</button>
+      <button class="btn sm ghost" id="addset">Add set</button>
+    </div>
+    <div class="card">${rows.join('')}</div>
+    ${hist.length?`<div class="card">
+      <div class="card-h"><h2>Slot trend</h2><span class="sub mut">e1RM, all variants</span></div>
+      ${sparkline(hist.map(h=>({date:h.date,v:est1rm(best(h.sets))})))}
+    </div>`:''}
+    <button class="btn primary" id="doneex">Done — next exercise</button>`;
+
+  el('back').onclick=()=>{openEx=null;renderTrain()};
+  el('swap').onclick=()=>openSwap(i);
+  el('addset').onclick=()=>{e.sets++;saveActive();renderTrain()};
+  el('doneex').onclick=()=>{
+    const nxt=w.exercises.findIndex((x,j)=>j>i && x.logged.length<x.sets);
+    openEx = nxt>=0?nxt:null; renderTrain(); window.scrollTo(0,0);
+  };
+
+  el('t-body').querySelectorAll('.setrow').forEach(row=>{
+    const k=+row.dataset.k;
+    row.querySelector('.tick').onclick=()=>{
+      const wv=parseFloat(row.querySelector('.w').value);
+      const rv=parseInt(row.querySelector('.r').value,10);
+      if(e.logged[k]){                        // un-log
+        e.logged.splice(k,1); saveActive(); renderTrain(); return;
+      }
+      if(!(wv>=0)||!(rv>0)){ toast('Enter weight and reps'); return; }
+      if(wv<0||rv<0||rv>200){ toast('Check those numbers'); return; }
+      e.logged[k]={weight:wv,reps:rv};
+      saveActive(); buzz(28); startTimer(e.rest); renderTrain();
+    };
+  });
+}
+
+const est1rm=s=>s?Math.round(s.weight*(1+s.reps/30)):0;
+
+async function finishWorkout(){
+  const w=ST.active;
+  const logged=w.exercises.filter(e=>e.logged.length);
+  if(!logged.length){ toast('Nothing logged yet'); return; }
+  const sess={
+    id:Date.now(), date:w.date, day:w.day,
+    block:w.info.block, weekInBlock:w.info.weekInBlock,
+    deload:w.info.deload, wave:w.info.wave.label,
+    exercises:logged.map(e=>({slotId:e.slotId,tag:e.tag,exId:e.exId,name:e.name,logged:e.logged})),
+  };
+  await putSession(sess);
+  ST.sessions.push(sess); ST.sessions.sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
+  ST.active=null; openEx=null; await saveActive(); stopTimer();
+  const vol=logged.reduce((t,e)=>t+e.logged.reduce((x,s)=>x+s.weight*s.reps,0),0);
+  toast('Logged · '+Math.round(vol).toLocaleString()+' lbs total volume');
+  go('home');
+}
+
+/* ============================================================
+   9. SWAP SHEET — the "machine is taken" flow
+   Ranked by: same slot pool first, then equipment variety,
+   then whether you have history (so it can prefill your weight).
+   ============================================================ */
+let swapFilter='all';
+function openSwap(exIndex){
+  const w=ST.active, e=w.exercises[exIndex];
+  const slot=PROGRAM[w.day].slots.find(s=>s.id===e.slotId);
+  renderSwap(slot,e,exIndex);
+}
+function renderSwap(slot,e,exIndex){
+  const recent=ST.sessions.slice(-6).flatMap(s=>s.exercises.map(x=>x.exId));
+  const cands=slot.pool
+    .filter(id=>swapFilter==='all'||LIB[id].e===swapFilter)
+    .map(id=>{
+      const h=lastPerformance(id);
+      return {id,...LIB[id],hist:h,
+        score:(id===e.exId?-100:0)+(h?12:0)-(recent.includes(id)?6:0)};
+    })
+    .sort((a,b)=>b.score-a.score);
+
+  const equips=[...new Set(slot.pool.map(id=>LIB[id].e))];
+  const chips=['all',...equips].map(k=>
+    `<button class="chip ${swapFilter===k?'on':''}" data-eq="${k}">${k==='all'?'All':EQUIP[k]}</button>`).join('');
+
+  const list=cands.map(c=>`
+    <div class="alt" data-id="${c.id}">
+      <div class="alt-b">
+        <h4>${esc(c.n)}</h4>
+        <p>${EQUIP[c.e]}${c.hist?' · last '+c.hist.sets[0].weight+' lbs × '+c.hist.sets[0].reps:' · no history'}</p>
+      </div>
+      ${c.id===e.exId?'<span class="pill cur">Current</span>':c.hist?'<span class="pill hist">Logged</span>':''}
+    </div>`).join('');
+
+  showSheet(`
+    <h2>Swap ${esc(slot.tag)}</h2>
+    <p class="sub">Same movement pattern, so your slot history stays comparable.</p>
+    <div class="chips">${chips}</div>
+    ${list||'<p class="sub mut" style="padding:16px 0">Nothing in this pool matches that equipment.</p>'}
+    <div class="row" style="margin-top:14px">
+      <button class="btn sm ghost" id="sw-pin">Pin as default</button>
+      <button class="btn sm ghost" id="sw-close">Cancel</button>
+    </div>
+    <p class="sub mut" style="margin-top:10px;font-size:12px">Pinning locks this slot to the current exercise and stops the weekly rotation for it.</p>`);
+
+  el('sheet-body').querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
+    swapFilter=c.dataset.eq; renderSwap(slot,e,exIndex);
+  });
+  el('sheet-body').querySelectorAll('.alt').forEach(a=>a.onclick=()=>{
+    const id=a.dataset.id;
+    e.exId=id; e.name=LIB[id].n; e.logged=[];
+    saveActive(); hideSheet(); renderTrain(); toast('Swapped to '+LIB[id].n);
+  });
+  el('sw-pin').onclick=async()=>{
+    ST.pins[e.slotId]=e.exId; await kvSet('pins',ST.pins);
+    hideSheet(); toast(LIB[e.exId].n+' pinned to this slot');
+  };
+  el('sw-close').onclick=hideSheet;
+}
+
+/* ============================================================
+   10. CHARTS — tiny inline SVG, no library
+   ============================================================ */
+function sparkline(pts,unit){
+  if(pts.length<2) return '<p class="sub mut">Log two sessions to see a trend.</p>';
+  const W=320,H=150,P=22;
+  const vs=pts.map(p=>p.v);
+  const min=Math.min(...vs), max=Math.max(...vs), span=(max-min)||1;
+  const x=i=>P+i*(W-2*P)/(pts.length-1);
+  const y=v=>H-P-((v-min)/span)*(H-2*P);
+  const line=pts.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(1)} ${y(p.v).toFixed(1)}`).join(' ');
+  const area=line+` L${x(pts.length-1).toFixed(1)} ${H-P} L${P} ${H-P} Z`;
+  const dots=pts.map((p,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="3" fill="var(--accent)"/>`).join('');
+  return `<svg class="wchart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="var(--accent)" stop-opacity=".22"/>
+      <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+    <path d="${area}" fill="url(#g1)"/>
+    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2"
+      stroke-linecap="round" stroke-linejoin="round"/>${dots}
+  </svg>
+  <div class="sub mut" style="display:flex;justify-content:space-between;font-size:11.5px">
+    <span>${fmtDate(pts[0].date)} · ${Math.round(min)}${unit||''}</span>
+    <span>${fmtDate(pts[pts.length-1].date)} · ${Math.round(pts[pts.length-1].v)}${unit||''}</span>
+  </div>`;
+}
+
+/* ============================================================
+   11. PROGRAM TAB — see and edit the slot system
+   ============================================================ */
+let progDay='A';
+function renderProgram(){
+  const info=blockInfo(today());
+  const day=PROGRAM[progDay];
+  const rows=day.slots.map(slot=>{
+    const cur=resolveExercise(slot,info);
+    const nextInfo={...info,weekInBlock:info.weekInBlock>=3?1:3,
+                    block:info.weekInBlock>=3?info.block+1:info.block};
+    const nxt=resolveExercise(slot,nextInfo);
+    const pinned=!!ST.pins[slot.id];
+    return `<div class="ex" data-slot="${slot.id}">
+      <div class="ex-b">
+        <div class="slot-tag ${slot.anchor?'anchor':''}">${esc(slot.tag)}${slot.anchor?' · anchor':' · rotates'}</div>
+        <h3>${esc(LIB[cur].n)}${pinned?' 📌':''}</h3>
+        <p>${slot.sets}×${info.wave.lo}–${info.wave.hi} · ${slot.rest}s${pinned?' · pinned':(nxt!==cur?' · next: '+esc(LIB[nxt].n):'')}</p>
+      </div>${CHEV}</div>`;
+  }).join('');
+
+  el('p-body').innerHTML=`
+    <div class="card" style="padding:14px 16px">
+      <div class="card-h" style="margin:0">
+        <h2>${esc(day.focus)}</h2>
+        <span class="sub mut">Block ${info.block+1} · Wk ${info.weekInBlock}</span></div>
+    </div>
+    <div class="card pad0">${rows}</div>
+    <div class="card">
+      <div class="card-h"><h2>How rotation works</h2></div>
+      <p class="sub">Anchors hold steady for the whole four-week block so progression stays
+      measurable, then shift to a related variant when the block turns over. The other slots
+      swap at week three. Pin any slot to freeze it.</p>
+    </div>`;
+
+  el('p-body').querySelectorAll('.ex').forEach(n=>n.onclick=()=>openSlotSheet(n.dataset.slot));
+}
+document.querySelectorAll('#p-seg button').forEach(b=>b.onclick=()=>{
+  progDay=b.dataset.day;
+  document.querySelectorAll('#p-seg button').forEach(x=>x.classList.toggle('on',x===b));
+  renderProgram();
+});
+
+function openSlotSheet(slotId){
+  const info=blockInfo(today());
+  const slot=PROGRAM[progDay].slots.find(s=>s.id===slotId);
+  const cur=resolveExercise(slot,info);
+  const hist=slotHistory(slotId);
+  const pinned=ST.pins[slotId];
+
+  const pool=slot.pool.map(id=>{
+    const h=lastPerformance(id);
+    return `<div class="alt" data-pin="${id}">
+      <div class="alt-b"><h4>${esc(LIB[id].n)}</h4>
+      <p>${EQUIP[LIB[id].e]}${h?' · '+h.sets.length+' sets logged '+fmtDate(h.date):''}</p></div>
+      ${id===cur?'<span class="pill cur">In rotation</span>':''}
+      ${pinned===id?'<span class="pill hist">Pinned</span>':''}
+    </div>`;
+  }).join('');
+
+  showSheet(`
+    <h2>${esc(slot.tag)}</h2>
+    <p class="sub">${slot.anchor?'Anchor slot — holds for the block, rotates at the boundary.':'Rotating slot — changes at week three.'}</p>
+    ${hist.length>1?`<div style="margin:14px 0">${sparkline(hist.map(h=>({date:h.date,v:est1rm(best(h.sets))})),' e1RM')}</div>`:''}
+    <div class="card-h" style="margin:16px 0 8px"><h2>Pool</h2>
+      <span class="sub mut">Tap to pin</span></div>
+    ${pool}
+    ${pinned?'<button class="btn sm ghost" id="unpin" style="width:100%;margin-top:12px">Unpin — resume rotation</button>':''}`);
+
+  el('sheet-body').querySelectorAll('[data-pin]').forEach(a=>a.onclick=async()=>{
+    ST.pins[slotId]=a.dataset.pin; await kvSet('pins',ST.pins);
+    hideSheet(); renderProgram(); toast('Pinned '+LIB[a.dataset.pin].n);
+  });
+  const un=el('unpin');
+  if(un) un.onclick=async()=>{
+    delete ST.pins[slotId]; await kvSet('pins',ST.pins);
+    hideSheet(); renderProgram(); toast('Rotation resumed');
+  };
+}
+
+/* ============================================================
+   12. BODY
+   ============================================================ */
+function renderBody(){
+  const t=today();
+  const isWed=parseISO(t).getDay()===3;
+  const thisWeek=ST.weights.find(w=>weekStart(w.date)===weekStart(t));
+  const sorted=[...ST.weights].sort((a,b)=>a.date.localeCompare(b.date));
+  const latest=sorted[sorted.length-1];
+  const prev=sorted[sorted.length-2];
+  const delta=latest&&prev?(latest.lbs-prev.lbs):null;
+
+  const rows=sorted.slice().reverse().map(w=>`
+    <div class="li"><div class="li-b">
+      <h3 class="num">${w.lbs} lbs</h3><p>${fmtDate(w.date)}</p></div>
+      <button class="btn xs ghost" data-del="${w.date}">Delete</button></div>`).join('');
+
+  el('b-body').innerHTML=`
+    ${isWed&&!thisWeek?`<div class="banner"><p>It's Wednesday — log your weigh-in.</p></div>`:''}
+    <div class="card">
+      <div class="card-h"><h2>${thisWeek?'Update this week':'Log weigh-in'}</h2>
+        ${delta!==null?`<span class="sub ${delta>0?'':'mut'}">${delta>0?'+':''}${delta.toFixed(1)} lbs</span>`:''}</div>
+      <div class="setrow" style="border:none;padding:0">
+        <div class="fld" style="flex:2"><input type="number" inputmode="decimal" step="0.1"
+          id="wt" placeholder="${latest?latest.lbs:'175'}" value="${thisWeek?thisWeek.lbs:''}"><label>lbs</label></div>
+        <button class="btn sm primary" id="wt-save" style="flex:1">Save</button>
+      </div>
+    </div>
+    ${sorted.length>1?`<div class="card">
+      <div class="card-h"><h2>Trend</h2><span class="sub mut">${sorted.length} weigh-ins</span></div>
+      ${sparkline(sorted.map(w=>({date:w.date,v:w.lbs})),' lbs')}</div>`:''}
+    ${rows?`<div class="card pad0">${rows}</div>`
+      :`<div class="empty"><svg viewBox="0 0 24 24"><path d="M4 17l5-6 4 4 7-8"/></svg>
+        <p>No weigh-ins yet.<br>Wednesdays work well — same time, same conditions.</p></div>`}`;
+
+  el('wt-save').onclick=async()=>{
+    const v=parseFloat(el('wt').value);
+    if(!(v>0)||v>1000){ toast('Enter a valid weight'); return; }
+    const date=thisWeek?thisWeek.date:t;
+    await putWeight({date,lbs:v});
+    ST.weights=await allWeights(); renderBody(); toast('Weigh-in saved');
+  };
+  el('b-body').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
+    await delWeight(b.dataset.del); ST.weights=await allWeights(); renderBody();
+  });
+}
+
+/* ============================================================
+   13. HISTORY
+   ============================================================ */
+let histFilter='all';
+function renderHistory(){
+  const list=[...ST.sessions].reverse()
+    .filter(s=>histFilter==='all'||s.day===histFilter);
+  if(!list.length){
+    el('hi-body').innerHTML=`<div class="empty">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+      <p>No sessions logged yet.</p></div>`;
+    return;
+  }
+  const rows=list.map(s=>{
+    const sets=s.exercises.reduce((t,e)=>t+e.logged.length,0);
+    const vol=s.exercises.reduce((t,e)=>t+e.logged.reduce((x,l)=>x+l.weight*l.reps,0),0);
+    return `<div class="li" data-id="${s.id}">
+      <div class="badge ${s.day.toLowerCase()}">${s.day}</div>
+      <div class="li-b"><h3>${fmtDate(s.date)}</h3>
+      <p>${s.exercises.length} exercises · ${sets} sets · ${Math.round(vol).toLocaleString()} lbs${s.deload?' · deload':''}</p></div>
+      ${CHEV}</div>`;
+  }).join('');
+  el('hi-body').innerHTML=`<div class="card pad0">${rows}</div>`;
+  el('hi-body').querySelectorAll('.li').forEach(n=>n.onclick=()=>openSession(+n.dataset.id));
+}
+document.querySelectorAll('#hi-seg button').forEach(b=>b.onclick=()=>{
+  histFilter=b.dataset.f;
+  document.querySelectorAll('#hi-seg button').forEach(x=>x.classList.toggle('on',x===b));
+  renderHistory();
+});
+
+function openSession(id){
+  const s=ST.sessions.find(x=>x.id===id);
+  if(!s) return;
+  const body=s.exercises.map(e=>`
+    <div class="ex" data-ex="${e.exId}">
+      <div class="ex-b">
+        <div class="slot-tag">${esc(e.tag||'')}</div>
+        <h3>${esc(e.name)}</h3>
+        <p class="num">${e.logged.map(l=>l.weight+' × '+l.reps).join('   ')}</p>
+      </div>${CHEV}</div>`).join('');
+  showSheet(`
+    <h2>${fmtDate(s.date)}</h2>
+    <p class="sub">${PROGRAM[s.day].name} · ${esc(s.wave||'')}${s.deload?' · deload':''} · Block ${(s.block??0)+1} Wk ${s.weekInBlock??'—'}</p>
+    <div class="card pad0" style="margin-top:14px">${body}</div>
+    <button class="btn sm danger" id="del-s" style="width:100%">Delete session</button>`);
+  el('sheet-body').querySelectorAll('[data-ex]').forEach(n=>n.onclick=()=>openExerciseChart(n.dataset.ex));
+  el('del-s').onclick=async()=>{
+    if(!confirm('Delete this session?')) return;
+    await delSession(id); ST.sessions=ST.sessions.filter(x=>x.id!==id);
+    hideSheet(); renderHistory(); toast('Deleted');
+  };
+}
+function openExerciseChart(exId){
+  const pts=[];
+  ST.sessions.forEach(s=>s.exercises.forEach(e=>{
+    if(e.exId===exId&&e.logged.length) pts.push({date:s.date,v:est1rm(best(e.logged))});
+  }));
+  showSheet(`
+    <h2>${esc(LIB[exId]?LIB[exId].n:exId)}</h2>
+    <p class="sub">Best set per session, as estimated 1RM.</p>
+    <div style="margin-top:16px">${sparkline(pts,' lbs')}</div>
+    <button class="btn sm ghost" id="bk" style="width:100%;margin-top:14px">Close</button>`);
+  el('bk').onclick=hideSheet;
+}
+
+/* ============================================================
+   14. SETTINGS
+   ============================================================ */
+function renderSettings(){
+  const info=blockInfo(today());
+  const deloaded=ST.deloads.includes(info.weekIndex);
+  el('s-body').innerHTML=`
+    <div class="card pad0">
+      <div class="toggle"><span>Rest timer sound</span>
+        <div class="sw ${ST.settings.sound?'on':''}" data-set="sound"></div></div>
+      <div class="toggle"><span>Haptic feedback</span>
+        <div class="sw ${ST.settings.haptic?'on':''}" data-set="haptic"></div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>This week</h2>
+        <span class="sub mut">Block ${info.block+1} · Week ${info.weekInBlock}</span></div>
+      <p class="sub" style="margin-bottom:12px">${deloaded
+        ? 'Marked as a deload. Two sets per exercise at roughly 60% of your usual load.'
+        : 'Running normally. Mark a deload when joints ache, sleep is poor, or the weights feel heavy for no reason.'}</p>
+      <button class="btn sm ${deloaded?'':'ghost'}" id="deload" style="width:100%">
+        ${deloaded?'Cancel deload':'Deload this week'}</button>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>Data</h2><span class="sub mut">v${SCHEMA_VERSION}</span></div>
+      <div class="row" style="margin-bottom:8px">
+        <button class="btn sm" id="exp">Export JSON</button>
+        <button class="btn sm ghost" id="imp">Import</button>
+      </div>
+      <button class="btn sm danger" id="clr" style="width:100%">Erase everything</button>
+      <input type="file" id="file" accept="application/json" hidden>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>Program start</h2></div>
+      <p class="sub" style="margin-bottom:10px">Block and week numbering counts from here.</p>
+      <div class="row">
+        <div class="fld"><input type="date" id="sd" value="${ST.startDate}"></div>
+        <button class="btn sm" id="sd-save" style="flex:0 0 90px">Set</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>Lift</h2></div>
+      <p class="sub">Three days a week, Monday / Wednesday / Friday. Lift A and Lift B alternate
+      so every movement pattern gets trained about one and a half times per week.
+      Four-week blocks, deload on demand. ${ST.sessions.length} sessions logged.</p>
+    </div>`;
+
+  el('s-body').querySelectorAll('[data-set]').forEach(s=>s.onclick=async()=>{
+    const k=s.dataset.set;
+    ST.settings[k]=!ST.settings[k];
+    await kvSet('settings',ST.settings);
+    s.classList.toggle('on',ST.settings[k]);
+    if(k==='haptic'&&ST.settings[k]) buzz(30);
+    if(k==='sound'&&ST.settings[k]) beep();
+  });
+
+  el('deload').onclick=async()=>{
+    const wi=info.weekIndex;
+    ST.deloads=deloaded?ST.deloads.filter(x=>x!==wi):[...ST.deloads,wi];
+    await kvSet('deloads',ST.deloads);
+    if(ST.active){                       // rebuild the in-progress session at new intensity
+      const keep=ST.active.exercises;
+      ST.active=buildWorkout(ST.active.date,ST.active.day);
+      ST.active.exercises.forEach(e=>{
+        const old=keep.find(o=>o.slotId===e.slotId);
+        if(old){ e.exId=old.exId; e.name=old.name; e.logged=old.logged; }
+      });
+      await saveActive();
+    }
+    renderSettings(); toast(deloaded?'Deload cancelled':'Deload week set');
+  };
+
+  el('exp').onclick=async()=>{
+    const data={
+      schema_version:SCHEMA_VERSION,
+      exported_at:new Date().toISOString(),
+      start_date:ST.startDate,
+      settings:ST.settings,
+      deload_weeks:ST.deloads,
+      slot_pins:ST.pins,
+      sessions:ST.sessions,
+      body_weights:ST.weights,
+    };
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='lift-'+today()+'.json';
+    a.click(); URL.revokeObjectURL(a.href);
+    toast('Exported');
+  };
+
+  el('imp').onclick=()=>el('file').click();
+  el('file').onchange=async ev=>{
+    const f=ev.target.files[0]; if(!f) return;
+    try{
+      const d=JSON.parse(await f.text());
+      if(!confirm('Import will merge into your current data. Continue?')) return;
+      for(const s of (d.sessions||[])) await putSession(s);
+      for(const w of (d.body_weights||[])) await putWeight(w);
+      if(d.start_date) await kvSet('startDate',d.start_date);
+      if(d.slot_pins) await kvSet('pins',d.slot_pins);
+      if(d.deload_weeks) await kvSet('deloads',d.deload_weeks);
+      await loadState(); go('home'); toast('Imported');
+    }catch(e){ toast('Could not read that file'); }
+    ev.target.value='';
+  };
+
+  el('clr').onclick=async()=>{
+    if(!confirm('Erase all sessions, weigh-ins and settings? This cannot be undone.')) return;
+    if(!confirm('Really erase everything?')) return;
+    await Promise.all([
+      idbReq(tx('sessions','readwrite').clear()),
+      idbReq(tx('bodyweights','readwrite').clear()),
+      idbReq(tx('kv','readwrite').clear()),
+    ]);
+    await loadState(); stopTimer(); go('home'); toast('Erased');
+  };
+
+  el('sd-save').onclick=async()=>{
+    const v=el('sd').value; if(!v) return;
+    ST.startDate=v; await kvSet('startDate',v);
+    renderSettings(); toast('Start date updated');
+  };
+}
+
+/* ============================================================
+   15. BOOT
+   ============================================================ */
+async function loadState(){
+  const [sessions,weights,settings,pins,deloads,startDate,active,timer]=await Promise.all([
+    allSessions(), allWeights(),
+    kvGet('settings',{sound:true,haptic:true}),
+    kvGet('pins',{}), kvGet('deloads',[]),
+    kvGet('startDate',null), kvGet('active',null), kvGet('timer',null),
+  ]);
+  ST.sessions=sessions.sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
+  ST.weights=weights;
+  ST.settings=settings; ST.pins=pins; ST.deloads=deloads;
+  ST.active=active;
+  if(!startDate){ ST.startDate=weekStart(today()); await kvSet('startDate',ST.startDate); }
+  else ST.startDate=startDate;
+  // restore a rest timer that was running when the app was backgrounded
+  if(timer && timer.end>Date.now()){
+    timerEnd=timer.end; timerTotal=timer.total;
+    el('timer').classList.add('on'); tickTimer();
+    clearInterval(timerInt); timerInt=setInterval(tickTimer,250);
+  }
+}
+
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&timerEnd) tickTimer(); });
+
+(async function init(){
+  try{
+    await openDB();
+    await loadState();
+    go('home');
+  }catch(e){
+    document.body.innerHTML='<div class="empty" style="padding-top:80px"><p>'+
+      'Storage unavailable. If you are in Private Browsing, switch to a normal tab.</p></div>';
+    console.error(e);
+  }
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  }
+})();
+</script>
+</body>
+</html>
