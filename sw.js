@@ -1,5 +1,5 @@
 /* Lift — offline cache. Bump CACHE when you edit index.html. */
-const CACHE = 'lift-v1';
+const CACHE = 'lift-v2';
 const ASSETS = ['./', './index.html', './manifest.webmanifest',
                 './icon-192.png', './icon-512.png', './icon-180.png'];
 

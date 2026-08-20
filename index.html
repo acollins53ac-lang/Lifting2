@@ -45,6 +45,8 @@ body{
   -webkit-font-smoothing:antialiased;
   padding-bottom:calc(var(--nav-h) + var(--safe-bot));
 }
+/* lift the page so the floating rest timer never covers the action buttons */
+body.timer-on{padding-bottom:calc(var(--nav-h) + var(--safe-bot) + 76px)}
 input,button,select,textarea{font-family:inherit;font-size:inherit;color:inherit;border:none;background:none;outline:none}
 button{cursor:pointer}
 ::-webkit-scrollbar{display:none}
@@ -649,17 +651,23 @@ function buildWorkout(dateStr,dayKey){
 }
 
 /* --- history lookups & progression -------------------------------- */
+/* Sets are stored positionally so set 3 stays set 3 even if you skip
+   set 2 or un-log set 1. That means the array can legitimately hold
+   nulls — never touch e.logged directly, always go through setsOf(). */
+const setsOf=e=>((e&&e.logged)||[]).filter(x=>x&&typeof x.weight==='number'&&typeof x.reps==='number');
+const doneCount=e=>setsOf(e).length;
+
 function lastPerformance(exId){
   for(let i=ST.sessions.length-1;i>=0;i--){
-    const e=ST.sessions[i].exercises.find(x=>x.exId===exId && x.logged.length);
-    if(e) return {sets:e.logged,date:ST.sessions[i].date};
+    const e=ST.sessions[i].exercises.find(x=>x.exId===exId && doneCount(x));
+    if(e) return {sets:setsOf(e),date:ST.sessions[i].date};
   }
   return null;
 }
 function slotHistory(slotId){
   const out=[];
   ST.sessions.forEach(s=>s.exercises.forEach(e=>{
-    if(e.slotId===slotId && e.logged.length) out.push({date:s.date,exId:e.exId,sets:e.logged});
+    if(e.slotId===slotId && doneCount(e)) out.push({date:s.date,exId:e.exId,sets:setsOf(e)});
   }));
   return out;
 }
@@ -721,12 +729,29 @@ function showSheet(html){
 function hideSheet(){ el('sheet').classList.remove('on'); el('scrim').classList.remove('on'); }
 el('scrim').onclick=hideSheet;
 
+/* Renders are wrapped so a single bad record can't leave a half-drawn
+   screen with dead buttons — you get a readable message and a way out. */
+const PANES={home:'h-body',train:'t-body',prog:'p-body',body:'b-body',hist:'hi-body',set:'s-body'};
+function guard(name,fn){
+  try{ fn(); }
+  catch(err){
+    console.error('render failed:',name,err);
+    const pane=el(PANES[name]);
+    if(pane) pane.innerHTML=`<div class="card">
+      <div class="card-h"><h2>Something went wrong here</h2></div>
+      <p class="sub" style="margin-bottom:12px">This screen couldn't be drawn.
+      Your logged data is safe — export a backup from Settings before doing anything else.</p>
+      <p class="sub mut" style="margin-bottom:12px;font-size:11.5px">${esc(err&&err.message||err)}</p>
+      <button class="btn sm ghost" style="width:100%" onclick="go('set')">Open Settings</button></div>`;
+  }
+}
 function go(v){
   document.querySelectorAll('.view').forEach(s=>s.classList.remove('on'));
   el('v-'+v).classList.add('on');
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
   window.scrollTo(0,0);
-  ({home:renderHome,train:renderTrain,prog:renderProgram,body:renderBody,hist:renderHistory,set:renderSettings}[v])();
+  guard(v,{home:renderHome,train:renderTrain,prog:renderProgram,
+           body:renderBody,hist:renderHistory,set:renderSettings}[v]);
 }
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
 
@@ -739,6 +764,7 @@ function startTimer(sec){
   timerEnd=Date.now()+sec*1000; timerTotal=sec;
   kvSet('timer',{end:timerEnd,total:sec});
   el('timer').classList.add('on');
+  document.body.classList.add('timer-on');
   tickTimer();
   clearInterval(timerInt); timerInt=setInterval(tickTimer,250);
 }
@@ -758,6 +784,7 @@ function tickTimer(){
 function stopTimer(){
   clearInterval(timerInt); timerInt=null; timerEnd=0;
   el('timer').classList.remove('on'); el('timer-t').classList.remove('done');
+  document.body.classList.remove('timer-on');
   kvSet('timer',null);
 }
 el('timer-skip').onclick=stopTimer;
@@ -853,15 +880,18 @@ function renderTrain(){
 }
 
 function renderExList(w){
-  const done=w.exercises.filter(e=>e.logged.length).length;
+  const done=w.exercises.filter(e=>doneCount(e)>0).length;
   const rows=w.exercises.map((e,i)=>{
     const last=lastPerformance(e.exId);
-    const detail=e.logged.length
-      ? '<span class="hl">'+e.logged.map(s=>s.weight+'×'+s.reps).join('  ')+'</span>'
+    const mine=setsOf(e);
+    const complete=mine.length>=e.sets;
+    const detail=mine.length
+      ? '<span class="hl">'+mine.map(s=>s.weight+'×'+s.reps).join('  ')+'</span>'
+        +(complete?'':' · '+(e.sets-mine.length)+' left')
       : last ? 'Last: '+last.sets.map(s=>s.weight+'×'+s.reps).join(', ')
       : 'No history yet';
     return `<div class="ex" data-i="${i}">
-      <div class="ex-n ${e.logged.length>=e.sets?'done':''}">${e.logged.length>=e.sets?'✓':i+1}</div>
+      <div class="ex-n ${complete?'done':''}">${complete?'✓':i+1}</div>
       <div class="ex-b">
         <div class="slot-tag ${e.anchor?'anchor':''}">${esc(e.tag)}${e.anchor?' · anchor':''}</div>
         <h3>${esc(e.name)}</h3>
@@ -930,13 +960,15 @@ function renderExLog(w,i){
       <div class="card-h"><h2>Slot trend</h2><span class="sub mut">e1RM, all variants</span></div>
       ${sparkline(hist.map(h=>({date:h.date,v:est1rm(best(h.sets))})))}
     </div>`:''}
-    <button class="btn primary" id="doneex">Done — next exercise</button>`;
+    <button class="btn primary" id="doneex">Done — next exercise</button>
+    <button class="btn ghost" id="finish2" style="margin-top:8px">Finish workout</button>`;
 
   el('back').onclick=()=>{openEx=null;renderTrain()};
+  el('finish2').onclick=finishWorkout;
   el('swap').onclick=()=>openSwap(i);
   el('addset').onclick=()=>{e.sets++;saveActive();renderTrain()};
   el('doneex').onclick=()=>{
-    const nxt=w.exercises.findIndex((x,j)=>j>i && x.logged.length<x.sets);
+    const nxt=w.exercises.findIndex((x,j)=>j>i && doneCount(x)<x.sets);
     openEx = nxt>=0?nxt:null; renderTrain(); window.scrollTo(0,0);
   };
 
@@ -945,11 +977,13 @@ function renderExLog(w,i){
     row.querySelector('.tick').onclick=()=>{
       const wv=parseFloat(row.querySelector('.w').value);
       const rv=parseInt(row.querySelector('.r').value,10);
-      if(e.logged[k]){                        // un-log
-        e.logged.splice(k,1); saveActive(); renderTrain(); return;
+      if(e.logged[k]){                        // un-log — blank the slot, don't shift others
+        e.logged[k]=null; saveActive(); renderTrain(); return;
       }
-      if(!(wv>=0)||!(rv>0)){ toast('Enter weight and reps'); return; }
-      if(wv<0||rv<0||rv>200){ toast('Check those numbers'); return; }
+      if(!Number.isFinite(wv)||!Number.isFinite(rv)){ toast('Enter weight and reps'); return; }
+      if(wv<0||wv>2000){ toast('Check that weight'); return; }
+      if(rv<1||rv>200){ toast('Check those reps'); return; }
+      while(e.logged.length<e.sets) e.logged.push(null);   // keep it dense, never sparse
       e.logged[k]={weight:wv,reps:rv};
       saveActive(); buzz(28); startTimer(e.rest); renderTrain();
     };
@@ -960,18 +994,22 @@ const est1rm=s=>s?Math.round(s.weight*(1+s.reps/30)):0;
 
 async function finishWorkout(){
   const w=ST.active;
-  const logged=w.exercises.filter(e=>e.logged.length);
+  const logged=w.exercises.filter(e=>doneCount(e)>0);
   if(!logged.length){ toast('Nothing logged yet'); return; }
   const sess={
     id:Date.now(), date:w.date, day:w.day,
     block:w.info.block, weekInBlock:w.info.weekInBlock,
     deload:w.info.deload, wave:w.info.wave.label,
-    exercises:logged.map(e=>({slotId:e.slotId,tag:e.tag,exId:e.exId,name:e.name,logged:e.logged})),
+    exercises:logged.map(e=>({slotId:e.slotId,tag:e.tag,exId:e.exId,name:e.name,logged:setsOf(e)})),
   };
-  await putSession(sess);
+  try{
+    await putSession(sess);
+  }catch(err){
+    console.error(err); toast('Could not save — try again'); return;
+  }
   ST.sessions.push(sess); ST.sessions.sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
   ST.active=null; openEx=null; await saveActive(); stopTimer();
-  const vol=logged.reduce((t,e)=>t+e.logged.reduce((x,s)=>x+s.weight*s.reps,0),0);
+  const vol=logged.reduce((t,e)=>t+setsOf(e).reduce((x,s)=>x+s.weight*s.reps,0),0);
   toast('Logged · '+Math.round(vol).toLocaleString()+' lbs total volume');
   go('home');
 }
@@ -1205,8 +1243,8 @@ function renderHistory(){
     return;
   }
   const rows=list.map(s=>{
-    const sets=s.exercises.reduce((t,e)=>t+e.logged.length,0);
-    const vol=s.exercises.reduce((t,e)=>t+e.logged.reduce((x,l)=>x+l.weight*l.reps,0),0);
+    const sets=s.exercises.reduce((t,e)=>t+doneCount(e),0);
+    const vol=s.exercises.reduce((t,e)=>t+setsOf(e).reduce((x,l)=>x+l.weight*l.reps,0),0);
     return `<div class="li" data-id="${s.id}">
       <div class="badge ${s.day.toLowerCase()}">${s.day}</div>
       <div class="li-b"><h3>${fmtDate(s.date)}</h3>
@@ -1230,7 +1268,7 @@ function openSession(id){
       <div class="ex-b">
         <div class="slot-tag">${esc(e.tag||'')}</div>
         <h3>${esc(e.name)}</h3>
-        <p class="num">${e.logged.map(l=>l.weight+' × '+l.reps).join('   ')}</p>
+        <p class="num">${setsOf(e).map(l=>l.weight+' × '+l.reps).join('   ')}</p>
       </div>${CHEV}</div>`).join('');
   showSheet(`
     <h2>${fmtDate(s.date)}</h2>
@@ -1247,7 +1285,7 @@ function openSession(id){
 function openExerciseChart(exId){
   const pts=[];
   ST.sessions.forEach(s=>s.exercises.forEach(e=>{
-    if(e.exId===exId&&e.logged.length) pts.push({date:s.date,v:est1rm(best(e.logged))});
+    if(e.exId===exId&&doneCount(e)) pts.push({date:s.date,v:est1rm(best(setsOf(e)))});
   }));
   showSheet(`
     <h2>${esc(LIB[exId]?LIB[exId].n:exId)}</h2>
@@ -1395,6 +1433,12 @@ async function loadState(){
     kvGet('pins',{}), kvGet('deloads',[]),
     kvGet('startDate',null), kvGet('active',null), kvGet('timer',null),
   ]);
+  // repair records saved before positional sets were made null-safe
+  const fix=e=>{ e.logged=Array.isArray(e.logged)
+    ? Array.from(e.logged,x=>(x&&typeof x.weight==='number'&&typeof x.reps==='number')?x:null)
+    : []; return e; };
+  sessions.forEach(s=>{ if(Array.isArray(s.exercises)) s.exercises.forEach(fix); });
+  if(active&&Array.isArray(active.exercises)) active.exercises.forEach(fix);
   ST.sessions=sessions.sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
   ST.weights=weights;
   ST.settings=settings; ST.pins=pins; ST.deloads=deloads;
@@ -1404,7 +1448,7 @@ async function loadState(){
   // restore a rest timer that was running when the app was backgrounded
   if(timer && timer.end>Date.now()){
     timerEnd=timer.end; timerTotal=timer.total;
-    el('timer').classList.add('on'); tickTimer();
+    el('timer').classList.add('on'); document.body.classList.add('timer-on'); tickTimer();
     clearInterval(timerInt); timerInt=setInterval(tickTimer,250);
   }
 }
