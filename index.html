@@ -395,25 +395,31 @@ nav button.on{color:var(--accent)}
 <script>
 "use strict";
 /* ============================================================
-   1. STORAGE  —  IndexedDB, schema-versioned for future migration
+   Lift v2 — session-driven program, delegated events.
+   Design rules that keep this stable:
+   1. Program position derives ONLY from completed-session count.
+      No dates, no drift when life moves a workout.
+   2. One permanent click listener routes every tap through
+      ACTIONS. Buttons can never exist without a live handler.
+   3. Renders never throw the app dead: guard() wraps them and
+      window.onerror catches anything that slips through.
+   4. Set data is positional and null-safe; nulls are expected.
    ============================================================ */
-const DB_NAME='lift', DB_VER=1, SCHEMA_VERSION=2;
-let db=null;
 
+/* ---------- 1. STORAGE ---------- */
+const DB_NAME='lift', DB_VER=1, SCHEMA_VERSION=3;
+let db=null;
 function openDB(){
   return new Promise((res,rej)=>{
     const r=indexedDB.open(DB_NAME,DB_VER);
     r.onupgradeneeded=e=>{
       const d=e.target.result;
-      // sessions: one record per completed workout
       if(!d.objectStoreNames.contains('sessions')){
         const s=d.createObjectStore('sessions',{keyPath:'id'});
         s.createIndex('date','date');
       }
-      // bodyweights: keyed by ISO date, one per weigh-in
       if(!d.objectStoreNames.contains('bodyweights'))
         d.createObjectStore('bodyweights',{keyPath:'date'});
-      // kv: settings, block state, slot pins, active session, custom exercises
       if(!d.objectStoreNames.contains('kv'))
         d.createObjectStore('kv',{keyPath:'key'});
     };
@@ -421,25 +427,20 @@ function openDB(){
     r.onerror=()=>rej(r.error);
   });
 }
-const tx=(store,mode)=>db.transaction(store,mode).objectStore(store);
-const idbReq=r=>new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
-const kvGet=async(k,dflt)=>{const v=await idbReq(tx('kv','readonly').get(k));return v===undefined?dflt:v.val};
-const kvSet=(k,val)=>idbReq(tx('kv','readwrite').put({key:k,val}));
-const allSessions=()=>idbReq(tx('sessions','readonly').getAll());
-const putSession=s=>idbReq(tx('sessions','readwrite').put(s));
-const delSession=id=>idbReq(tx('sessions','readwrite').delete(id));
-const allWeights=()=>idbReq(tx('bodyweights','readonly').getAll());
-const putWeight=w=>idbReq(tx('bodyweights','readwrite').put(w));
-const delWeight=d=>idbReq(tx('bodyweights','readwrite').delete(d));
+const tx=(st,m)=>db.transaction(st,m).objectStore(st);
+const req=r=>new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+const kvGet=async(k,d)=>{const v=await req(tx('kv','readonly').get(k));return v===undefined?d:v.val};
+const kvSet=(k,val)=>req(tx('kv','readwrite').put({key:k,val})).catch(e=>console.error('kvSet',k,e));
+const allSessions=()=>req(tx('sessions','readonly').getAll());
+const putSession=s=>req(tx('sessions','readwrite').put(s));
+const delSession=id=>req(tx('sessions','readwrite').delete(id));
+const allWeights=()=>req(tx('bodyweights','readonly').getAll());
+const putWeight=w=>req(tx('bodyweights','readwrite').put(w));
+const delWeight=d=>req(tx('bodyweights','readwrite').delete(d));
 
-/* ============================================================
-   2. EXERCISE LIBRARY
-   Every exercise carries equipment so the swap sheet can filter
-   by what's actually free, and a `bump` = sensible load increment.
-   ============================================================ */
+/* ---------- 2. EXERCISE LIBRARY ---------- */
 const EQUIP={db:'Dumbbell',cable:'Cable',machine:'Machine',bar:'Barbell',bw:'Bodyweight',smith:'Smith'};
 const LIB={
-  // --- horizontal press ---
   inc_db_press:{n:'Incline DB Press (30°)',e:'db',b:5},
   flat_db_press:{n:'Flat DB Press',e:'db',b:5},
   inc_mach_press:{n:'Incline Machine Press',e:'machine',b:10},
@@ -447,66 +448,55 @@ const LIB={
   inc_bb_press:{n:'Incline Barbell Press',e:'bar',b:5},
   weighted_dip:{n:'Weighted Dip',e:'bw',b:5},
   smith_inc_press:{n:'Smith Incline Press',e:'smith',b:10},
-  // --- chest isolation ---
   cable_fly_mid:{n:'Cable Fly (mid)',e:'cable',b:5},
   cable_fly_low:{n:'Low-to-High Cable Fly',e:'cable',b:5},
   cable_fly_high:{n:'High-to-Low Cable Fly',e:'cable',b:5},
   pec_deck:{n:'Pec Deck',e:'machine',b:10},
   inc_db_fly:{n:'Incline DB Fly',e:'db',b:2.5},
-  // --- knee dominant, unilateral ---
   bulgarian:{n:'Bulgarian Split Squat',e:'db',b:5},
   walking_lunge:{n:'Walking Lunge',e:'db',b:5},
   reverse_lunge:{n:'Reverse Lunge',e:'db',b:5},
   step_up:{n:'Dumbbell Step-Up',e:'db',b:5},
   smith_split:{n:'Smith Split Squat',e:'smith',b:10},
-  // --- quad accessory ---
   leg_ext:{n:'Leg Extension',e:'machine',b:10},
   hack_squat:{n:'Hack Squat',e:'machine',b:20},
   leg_press:{n:'Leg Press',e:'machine',b:20},
   goblet_squat:{n:'Goblet Squat',e:'db',b:5},
   pendulum_squat:{n:'Pendulum / V-Squat',e:'machine',b:20},
-  // --- vertical press ---
   seated_db_ohp:{n:'Seated DB Shoulder Press',e:'db',b:5},
   mach_ohp:{n:'Machine Shoulder Press',e:'machine',b:10},
   arnold:{n:'Arnold Press',e:'db',b:5},
   smith_ohp:{n:'Smith Shoulder Press',e:'smith',b:10},
   landmine_press:{n:'Half-Kneeling Landmine Press',e:'bar',b:5},
-  // --- lateral delt ---
   db_lat_raise:{n:'DB Lateral Raise',e:'db',b:2.5},
   cable_lat_raise:{n:'Cable Lateral Raise',e:'cable',b:2.5},
   mach_lat_raise:{n:'Machine Lateral Raise',e:'machine',b:5},
   lean_lat_raise:{n:'Lean-Away Lateral Raise',e:'db',b:2.5},
-  // --- vertical pull ---
   pullup:{n:'Pull-Up',e:'bw',b:5},
   lat_pulldown:{n:'Lat Pulldown',e:'machine',b:10},
   neutral_pulldown:{n:'Neutral-Grip Pulldown',e:'machine',b:10},
   assisted_pullup:{n:'Assisted Pull-Up',e:'machine',b:10},
   kneel_cable_pulldown:{n:'Kneeling Cable Pulldown',e:'cable',b:5},
-  // --- horizontal row ---
   chest_supp_row:{n:'Chest-Supported Row',e:'machine',b:10},
   seated_cable_row:{n:'Seated Cable Row',e:'cable',b:10},
   one_arm_db_row:{n:'One-Arm DB Row',e:'db',b:5},
   tbar_row:{n:'T-Bar Row',e:'bar',b:10},
   mach_row:{n:'Machine Row',e:'machine',b:10},
-  // --- hinge / posterior ---
   rdl:{n:'Romanian Deadlift',e:'bar',b:10},
   db_rdl:{n:'DB Romanian Deadlift',e:'db',b:5},
   hip_thrust:{n:'Hip Thrust',e:'bar',b:10},
   seated_leg_curl:{n:'Seated Leg Curl',e:'machine',b:10},
   lying_leg_curl:{n:'Lying Leg Curl',e:'machine',b:10},
   back_ext:{n:'45° Back Extension',e:'bw',b:5},
-  // --- rear delt / upper back ---
   face_pull:{n:'Face Pull',e:'cable',b:5},
   rear_delt_mach:{n:'Reverse Pec Deck',e:'machine',b:5},
   cable_rear_fly:{n:'Cable Rear Delt Fly',e:'cable',b:2.5},
   bent_db_fly:{n:'Bent-Over DB Rear Fly',e:'db',b:2.5},
-  // --- biceps ---
   inc_db_curl:{n:'Incline DB Curl',e:'db',b:2.5},
   cable_curl:{n:'Cable Curl',e:'cable',b:5},
   hammer_curl:{n:'Hammer Curl',e:'db',b:2.5},
   preacher_curl:{n:'Preacher Curl',e:'machine',b:5},
   ez_curl:{n:'EZ-Bar Curl',e:'bar',b:5},
-  // --- triceps ---
   rope_pushdown:{n:'Rope Pushdown',e:'cable',b:5},
   oh_cable_ext:{n:'Overhead Cable Extension',e:'cable',b:5},
   skullcrusher:{n:'EZ Skullcrusher',e:'bar',b:5},
@@ -514,11 +504,7 @@ const LIB={
   dip_mach:{n:'Triceps Dip Machine',e:'machine',b:10},
 };
 
-/* ============================================================
-   3. PROGRAM — movement slots, not fixed exercises.
-   anchor:true  -> stays put all 4 weeks, rotates at block edge
-   anchor:false -> swaps at week 3, giving mid-block variety
-   ============================================================ */
+/* ---------- 3. PROGRAM ---------- */
 const PROGRAM={
   A:{name:'Lift A',focus:'Push + Quads',slots:[
     {id:'a1',tag:'Horizontal Press',anchor:true, rest:105,sets:3,
@@ -551,10 +537,6 @@ const PROGRAM={
      pool:['rope_pushdown','oh_cable_ext','bar_pushdown','skullcrusher','dip_mach']},
   ]},
 };
-
-/* Rep waves across the 4-week block.
-   Heavier week 2, higher-rep week 3, week 4 repeats week 1's range
-   so you can go back and beat the numbers you already know. */
 const WAVE=[
   {lo:8, hi:12, label:'Moderate',      note:'Base volume. Own the rep range.'},
   {lo:6, hi:8,  label:'Heavy',         note:'Load up. Same movements, fewer reps.'},
@@ -563,78 +545,52 @@ const WAVE=[
 ];
 const DELOAD={lo:8,hi:10,label:'Deload',note:'Two sets, ~60% load. Let fatigue clear.'};
 
-/* ============================================================
-   4. ENGINE — dates, block math, exercise resolution, progression
-   ============================================================ */
+/* ---------- 4. ENGINE — session count is the only clock ---------- */
 const DAY_MS=86400000;
 const iso=d=>{const x=new Date(d);x.setHours(12,0,0,0);
   return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')};
 const today=()=>iso(new Date());
-const parseISO=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d,12)};
-const daysBetween=(a,b)=>Math.round((parseISO(b)-parseISO(a))/DAY_MS);
+const parseISO=s=>{const[y,m,d]=String(s).split('-').map(Number);return new Date(y||2000,(m||1)-1,d||1,12)};
 const fmtDate=d=>parseISO(d).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+const weekStart=ds=>{const d=parseISO(ds);const sh=(d.getDay()+6)%7;return iso(new Date(d.getTime()-sh*DAY_MS))};
+const daysBetween=(a,b)=>Math.round((parseISO(b)-parseISO(a))/DAY_MS);
 
-let ST={};  // in-memory app state
+let ST={};
 
-/* Monday of the week containing `date` — the program's week boundary */
-function weekStart(dateStr){
-  const d=parseISO(dateStr);
-  const shift=(d.getDay()+6)%7;          // Mon=0 … Sun=6
-  return iso(new Date(d.getTime()-shift*DAY_MS));
-}
-/* How many program weeks have elapsed since the start date */
-function weekIndex(dateStr){
-  return Math.max(0,Math.floor(daysBetween(weekStart(ST.startDate),weekStart(dateStr))/7));
-}
-function blockInfo(dateStr){
-  const wi=weekIndex(dateStr);
-  const deloaded=ST.deloads.includes(wi);
-  const wk=wi%4;                          // 0-3 within the block
+/* Your place in the program: N completed sessions.
+   3 sessions = 1 program week. 4 program weeks = 1 block. */
+function pos(){
+  const n=ST.sessions.length;
+  const week=Math.floor(n/3);
+  const deload=ST.deloads.includes(week);
   return {
-    weekIndex:wi,
-    block:Math.floor(wi/4),
-    weekInBlock:wk+1,
-    deload:deloaded,
-    wave:deloaded?DELOAD:WAVE[wk],
+    n, weekIndex:week,
+    sessionInWeek:n%3+1,
+    weekInBlock:week%4+1,
+    block:Math.floor(week/4),
+    deload,
+    wave:deload?DELOAD:WAVE[week%4],
   };
 }
-/* Which lift falls on this date?
-   A/B alternate M-W-F, and the pattern flips each week, so every
-   movement pattern gets trained ~1.5x per week rather than once. */
-const TRAIN_DAYS=[1,3,5]; // Mon, Wed, Fri
-function dayFor(dateStr){
-  const d=parseISO(dateStr), dow=d.getDay();
-  if(!TRAIN_DAYS.includes(dow)) return null;
-  const slot=TRAIN_DAYS.indexOf(dow);              // 0,1,2
-  const flip=weekIndex(dateStr)%2;                 // alternate weekly
-  return (slot+flip)%2===0?'A':'B';
-}
-function nextTrainingDay(fromStr){
-  for(let i=0;i<8;i++){
-    const s=iso(new Date(parseISO(fromStr).getTime()+i*DAY_MS));
-    if(dayFor(s)) return s;
-  }
-  return fromStr;
-}
-
-/* Resolve which exercise occupies a slot for a given block/week.
-   A manual pin always wins — that's the "I like this sub better" path. */
+/* Suggestion is simply the opposite of whatever came last. */
+const suggestDay=()=>{
+  const last=ST.sessions[ST.sessions.length-1];
+  return last && last.day==='A' ? 'B' : 'A';
+};
 function resolveExercise(slot,info){
   const pin=ST.pins[slot.id];
-  if(pin && slot.pool.includes(pin)) return pin;
   if(pin && LIB[pin]) return pin;
   const p=slot.pool;
   const i=slot.anchor
-    ? info.block % p.length                                  // rotate per block
-    : (info.block*2 + (info.weekInBlock>=3?1:0)) % p.length; // flip mid-block
+    ? info.block % p.length
+    : (info.block*2 + (info.weekInBlock>=3?1:0)) % p.length;
   return p[i];
 }
-/* Build the full prescription for one training day */
-function buildWorkout(dateStr,dayKey){
-  const info=blockInfo(dateStr);
+function buildWorkout(dayKey){
+  const info=pos();
   const day=PROGRAM[dayKey];
   return {
-    date:dateStr, day:dayKey, info,
+    date:today(), day:dayKey, info,
     name:day.name, focus:day.focus,
     exercises:day.slots.map(slot=>{
       const exId=resolveExercise(slot,info);
@@ -650,33 +606,29 @@ function buildWorkout(dateStr,dayKey){
   };
 }
 
-/* --- history lookups & progression -------------------------------- */
-/* Sets are stored positionally so set 3 stays set 3 even if you skip
-   set 2 or un-log set 1. That means the array can legitimately hold
-   nulls — never touch e.logged directly, always go through setsOf(). */
+/* ---------- sets are positional and may contain nulls ---------- */
 const setsOf=e=>((e&&e.logged)||[]).filter(x=>x&&typeof x.weight==='number'&&typeof x.reps==='number');
 const doneCount=e=>setsOf(e).length;
+const est1rm=s=>s?Math.round(s.weight*(1+s.reps/30)):0;
+const best=sets=>sets.reduce((b,s)=>{
+  const v=(s.weight||0)*(1+(s.reps||0)/30);
+  return v>b.v?{v,set:s}:b;
+},{v:0,set:null}).set;
 
 function lastPerformance(exId){
   for(let i=ST.sessions.length-1;i>=0;i--){
-    const e=ST.sessions[i].exercises.find(x=>x.exId===exId && doneCount(x));
+    const e=(ST.sessions[i].exercises||[]).find(x=>x.exId===exId && doneCount(x));
     if(e) return {sets:setsOf(e),date:ST.sessions[i].date};
   }
   return null;
 }
 function slotHistory(slotId){
   const out=[];
-  ST.sessions.forEach(s=>s.exercises.forEach(e=>{
+  ST.sessions.forEach(s=>(s.exercises||[]).forEach(e=>{
     if(e.slotId===slotId && doneCount(e)) out.push({date:s.date,exId:e.exId,sets:setsOf(e)});
   }));
   return out;
 }
-const best=sets=>sets.reduce((b,s)=>{
-  const v=(s.weight||0)*(1+(s.reps||0)/30);       // Epley e1RM, for comparing across variants
-  return v>b.v?{v,set:s}:b;
-},{v:0,set:null}).set;
-
-/* Double progression: clear the top of the range on every set, load goes up. */
 function suggest(ex){
   const last=lastPerformance(ex.exId);
   if(!last) return {text:'First time — find a weight you can control for '+ex.lo+'–'+ex.hi+'.',w:null};
@@ -684,16 +636,11 @@ function suggest(ex){
   const w=last.sets[0].weight||0;
   const cleared=last.sets.every(s=>(s.reps||0)>=ex.hi);
   const summary=last.sets.map(s=>s.reps).join(', ');
-  if(ex.lo===8&&ex.hi===12&&cleared)
-    return {text:'Last: '+w+' × '+summary+' — cleared it. Go '+(w+bump)+' × '+ex.lo+'.',w:w+bump};
-  if(cleared) return {text:'Last: '+w+' × '+summary+' — add weight: '+(w+bump)+' × '+ex.lo+'.',w:w+bump};
+  if(cleared) return {text:'Last: '+w+' × '+summary+' — cleared it. Go '+(w+bump)+' × '+ex.lo+'.',w:w+bump};
   return {text:'Last: '+w+' × '+summary+'. Target '+w+' × '+ex.hi+' across.',w:w};
 }
 
-/* ============================================================
-   5. UI HELPERS
-   ============================================================ */
-const $=s=>document.querySelector(s);
+/* ---------- 5. UI CORE ---------- */
 const el=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const CHECK='<svg viewBox="0 0 24 24"><path d="M4 12.5l5.5 5.5L20 6.5"/></svg>';
@@ -704,48 +651,72 @@ function toast(msg){
   const t=el('toast'); t.textContent=msg; t.classList.add('on');
   clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),1900);
 }
-function buzz(ms){ if(ST.settings.haptic && navigator.vibrate) navigator.vibrate(ms); }
+function buzz(p){ try{ if(ST.settings.haptic&&navigator.vibrate) navigator.vibrate(p); }catch(e){} }
 let audioCtx;
 function beep(){
   if(!ST.settings.sound) return;
   try{
     audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
-    [0,180,360].forEach((delay,i)=>setTimeout(()=>{
-      const o=audioCtx.createOscillator(), g=audioCtx.createGain();
-      o.connect(g); g.connect(audioCtx.destination);
-      o.frequency.value=i===2?1050:780; o.type='sine';
+    [0,180,360].forEach((d,i)=>setTimeout(()=>{
+      const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+      o.connect(g);g.connect(audioCtx.destination);
+      o.frequency.value=i===2?1050:780;o.type='sine';
       g.gain.setValueAtTime(.0001,audioCtx.currentTime);
       g.gain.exponentialRampToValueAtTime(.25,audioCtx.currentTime+.01);
       g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+.28);
-      o.start(); o.stop(audioCtx.currentTime+.3);
-    },delay));
+      o.start();o.stop(audioCtx.currentTime+.3);
+    },d));
   }catch(e){}
 }
-
-function showSheet(html){
-  el('sheet-body').innerHTML=html;
-  el('sheet').classList.add('on'); el('scrim').classList.add('on');
-}
+function showSheet(html){ el('sheet-body').innerHTML=html;
+  el('sheet').classList.add('on'); el('scrim').classList.add('on'); }
 function hideSheet(){ el('sheet').classList.remove('on'); el('scrim').classList.remove('on'); }
-el('scrim').onclick=hideSheet;
 
-/* Renders are wrapped so a single bad record can't leave a half-drawn
-   screen with dead buttons — you get a readable message and a way out. */
+function sparkline(pts,unit){
+  if(!pts||pts.length<2) return '<p class="sub mut">Log two sessions to see a trend.</p>';
+  const W=320,H=150,P=22;
+  const vs=pts.map(p=>p.v);
+  const min=Math.min(...vs),max=Math.max(...vs),span=(max-min)||1;
+  const x=i=>P+i*(W-2*P)/(pts.length-1);
+  const y=v=>H-P-((v-min)/span)*(H-2*P);
+  const line=pts.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(1)} ${y(p.v).toFixed(1)}`).join(' ');
+  const area=line+` L${x(pts.length-1).toFixed(1)} ${H-P} L${P} ${H-P} Z`;
+  const dots=pts.map((p,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="3" fill="var(--accent)"/>`).join('');
+  return `<svg class="wchart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="var(--accent)" stop-opacity=".22"/>
+      <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+    <path d="${area}" fill="url(#g1)"/>
+    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2"
+      stroke-linecap="round" stroke-linejoin="round"/>${dots}</svg>
+  <div class="sub mut" style="display:flex;justify-content:space-between;font-size:11.5px">
+    <span>${fmtDate(pts[0].date)} · ${Math.round(min)}${unit||''}</span>
+    <span>${fmtDate(pts[pts.length-1].date)} · ${Math.round(pts[pts.length-1].v)}${unit||''}</span></div>`;
+}
+
+/* ---------- error containment ---------- */
 const PANES={home:'h-body',train:'t-body',prog:'p-body',body:'b-body',hist:'hi-body',set:'s-body'};
+let curView='home';
+function crashCard(err){
+  return `<div class="card">
+    <div class="card-h"><h2>Something went wrong here</h2></div>
+    <p class="sub" style="margin-bottom:10px">Your data is safe. Export a backup from Settings,
+    then tell Claude what you tapped and paste this:</p>
+    <p class="sub mut" style="margin-bottom:12px;font-size:11.5px;word-break:break-all">${esc(err&&(err.message||err))}</p>
+    <button class="btn sm ghost" style="width:100%" data-a="nav" data-v="set">Open Settings</button></div>`;
+}
 function guard(name,fn){
   try{ fn(); }
   catch(err){
-    console.error('render failed:',name,err);
-    const pane=el(PANES[name]);
-    if(pane) pane.innerHTML=`<div class="card">
-      <div class="card-h"><h2>Something went wrong here</h2></div>
-      <p class="sub" style="margin-bottom:12px">This screen couldn't be drawn.
-      Your logged data is safe — export a backup from Settings before doing anything else.</p>
-      <p class="sub mut" style="margin-bottom:12px;font-size:11.5px">${esc(err&&err.message||err)}</p>
-      <button class="btn sm ghost" style="width:100%" onclick="go('set')">Open Settings</button></div>`;
+    console.error('render',name,err);
+    const pane=el(PANES[name]); if(pane) pane.innerHTML=crashCard(err);
   }
 }
+window.addEventListener('error',e=>{ console.error(e.error||e.message); toast('Error — data is safe'); });
+window.addEventListener('unhandledrejection',e=>{ console.error(e.reason); });
+
 function go(v){
+  curView=v;
   document.querySelectorAll('.view').forEach(s=>s.classList.remove('on'));
   el('v-'+v).classList.add('on');
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
@@ -753,20 +724,14 @@ function go(v){
   guard(v,{home:renderHome,train:renderTrain,prog:renderProgram,
            body:renderBody,hist:renderHistory,set:renderSettings}[v]);
 }
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
 
-/* ============================================================
-   6. REST TIMER — survives tab changes and a locked phone by
-   storing an absolute end timestamp rather than counting down.
-   ============================================================ */
-let timerEnd=0, timerTotal=0, timerInt=null;
+/* ---------- 6. REST TIMER ---------- */
+let timerEnd=0,timerTotal=0,timerInt=null;
 function startTimer(sec){
   timerEnd=Date.now()+sec*1000; timerTotal=sec;
   kvSet('timer',{end:timerEnd,total:sec});
-  el('timer').classList.add('on');
-  document.body.classList.add('timer-on');
-  tickTimer();
-  clearInterval(timerInt); timerInt=setInterval(tickTimer,250);
+  el('timer').classList.add('on'); document.body.classList.add('timer-on');
+  tickTimer(); clearInterval(timerInt); timerInt=setInterval(tickTimer,250);
 }
 function tickTimer(){
   const left=Math.max(0,Math.round((timerEnd-Date.now())/1000));
@@ -787,35 +752,50 @@ function stopTimer(){
   document.body.classList.remove('timer-on');
   kvSet('timer',null);
 }
-el('timer-skip').onclick=stopTimer;
-el('timer-add').onclick=()=>{ timerEnd+=30000; timerTotal+=30; kvSet('timer',{end:timerEnd,total:timerTotal}); tickTimer(); };
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&timerEnd) tickTimer(); });
 
-/* ============================================================
-   7. HOME
-   ============================================================ */
+/* ---------- 7. STATE MUTATIONS ---------- */
+let openEx=null, swapFilter='all', progDay='A', histFilter='all';
+const saveActive=()=>kvSet('active',ST.active);
+
+async function finishWorkout(){
+  const w=ST.active; if(!w) return;
+  const logged=w.exercises.filter(e=>doneCount(e)>0);
+  if(!logged.length){ toast('Nothing logged yet'); return; }
+  const info=pos();
+  const sess={
+    id:Date.now(), date:w.date, day:w.day,
+    block:info.block, weekInBlock:info.weekInBlock,
+    deload:info.deload, wave:info.wave.label,
+    exercises:logged.map(e=>({slotId:e.slotId,tag:e.tag,exId:e.exId,name:e.name,logged:setsOf(e)})),
+  };
+  try{ await putSession(sess); }
+  catch(err){ console.error(err); toast('Could not save — try again'); return; }
+  ST.sessions.push(sess);
+  ST.active=null; openEx=null; saveActive(); stopTimer();
+  const vol=logged.reduce((t,e)=>t+setsOf(e).reduce((x,s)=>x+s.weight*s.reps,0),0);
+  toast('Logged · '+Math.round(vol).toLocaleString()+' lbs volume');
+  go('home');
+}
+
+/* ---------- 8. RENDERERS ---------- */
 function renderHome(){
   el('h-date').textContent=parseISO(today()).toLocaleDateString(undefined,
     {weekday:'long',month:'long',day:'numeric'});
-  const t=today();
-  const info=blockInfo(t);
-  const scheduled=dayFor(t);
+  const info=pos();
+  const sug=suggestDay();
+  const other=sug==='A'?'B':'A';
   const active=ST.active;
-  const nextDate=scheduled?t:nextTrainingDay(t);
-  const dayKey=scheduled||dayFor(nextDate);
-  const p=PROGRAM[dayKey];
-
-  const doneToday=ST.sessions.some(s=>s.date===t);
+  const t=today();
   const weekCount=ST.sessions.filter(s=>weekStart(s.date)===weekStart(t)).length;
   const last=ST.sessions[ST.sessions.length-1];
 
-  // 14-day activity strip
   let dots='';
   for(let i=13;i>=0;i--){
     const d=iso(new Date(parseISO(t).getTime()-i*DAY_MS));
     const s=ST.sessions.find(x=>x.date===d);
     dots+=`<div class="dot ${s?s.day.toLowerCase():''} ${d===t?'today':''}"></div>`;
   }
-  // block progress bar
   let wks='';
   for(let i=0;i<4;i++){
     const gi=info.block*4+i;
@@ -823,47 +803,39 @@ function renderHome(){
     wks+=`<div class="wk ${cls}"></div>`;
   }
 
-  const heroTag = active ? 'In progress'
-    : doneToday ? 'Done today'
-    : scheduled ? 'Today' : 'Next up · '+fmtDate(nextDate);
-
-  el('h-body').innerHTML=`
+  el('h-body').innerHTML= active ? `
     <div class="hero">
-      <div class="tag">${esc(heroTag)}</div>
-      <h2>${esc(p.name)}</h2>
-      <div class="meta">${esc(p.focus)} · ${info.deload?'Deload week':'Week '+info.weekInBlock+' of 4'} · ${esc(info.wave.label)} ${info.wave.lo}–${info.wave.hi}</div>
-      <button class="btn primary" id="start-btn">${active?'Resume workout':doneToday?'Train again':'Start workout'}</button>
+      <div class="tag">In progress</div>
+      <h2>${esc(active.name)}</h2>
+      <div class="meta">${esc(active.focus)} · ${active.exercises.filter(e=>doneCount(e)>0).length} of ${active.exercises.length} exercises started</div>
+      <button class="btn primary" data-a="resume">Resume workout</button>
       <div class="blockbar">${wks}</div>
-    </div>
+    </div>` : `
+    <div class="hero">
+      <div class="tag">Up next</div>
+      <h2>${esc(PROGRAM[sug].name)}</h2>
+      <div class="meta">${esc(PROGRAM[sug].focus)} · ${info.deload?'Deload':'Week '+info.weekInBlock+' of 4 · '+esc(info.wave.label)+' '+info.wave.lo+'–'+info.wave.hi}
+        · Session ${info.sessionInWeek} of 3</div>
+      <button class="btn primary" data-a="start" data-day="${sug}">Start ${esc(PROGRAM[sug].name)}</button>
+      <button class="btn ghost" data-a="start" data-day="${other}" style="margin-top:8px">Do ${esc(PROGRAM[other].name)} instead</button>
+      <div class="blockbar">${wks}</div>
+    </div>`;
 
+  el('h-body').innerHTML+=`
     <div class="stats">
       <div class="stat"><b class="num">${ST.sessions.length}</b><span>Sessions</span></div>
       <div class="stat"><b class="num">${weekCount}/3</b><span>This week</span></div>
       <div class="stat"><b class="num">${last?daysBetween(last.date,t):'—'}</b><span>Days since</span></div>
     </div>
-
     <div class="card">
-      <div class="card-h"><h2>Last 14 days</h2>
-        <span class="sub mut">Block ${info.block+1}</span></div>
+      <div class="card-h"><h2>Last 14 days</h2><span class="sub mut">Block ${info.block+1}</span></div>
       <div class="dots">${dots}</div>
     </div>
-
     <div class="card">
       <div class="card-h"><h2>This week's focus</h2></div>
-      <p class="sub">${esc(info.wave.note)}</p>
+      <p class="sub">${esc(info.wave.note)} The program moves with your sessions — miss a day and nothing shifts, just pick up where you left off.</p>
     </div>`;
-
-  el('start-btn').onclick=()=>{
-    if(!ST.active) ST.active=buildWorkout(t,dayKey);
-    saveActive(); go('train');
-  };
 }
-
-/* ============================================================
-   8. TRAIN — session overview + set logging
-   ============================================================ */
-let openEx=null;   // index of exercise being logged, null = list view
-const saveActive=()=>kvSet('active',ST.active);
 
 function renderTrain(){
   const w=ST.active;
@@ -872,7 +844,10 @@ function renderTrain(){
       <div class="top"><div><div class="eyebrow">Not started</div><h1>Train</h1></div></div>
       <div class="empty">
         <svg viewBox="0 0 24 24"><path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11"/></svg>
-        <p>No workout in progress.<br>Head to Home and start one.</p>
+        <p>No workout in progress.</p></div>
+      <div class="row">
+        <button class="btn" data-a="start" data-day="A">Start Lift A</button>
+        <button class="btn" data-a="start" data-day="B">Start Lift B</button>
       </div>`;
     return;
   }
@@ -880,17 +855,16 @@ function renderTrain(){
 }
 
 function renderExList(w){
-  const done=w.exercises.filter(e=>doneCount(e)>0).length;
+  const done=w.exercises.filter(e=>doneCount(e)>=e.sets).length;
   const rows=w.exercises.map((e,i)=>{
-    const last=lastPerformance(e.exId);
     const mine=setsOf(e);
     const complete=mine.length>=e.sets;
+    const last=lastPerformance(e.exId);
     const detail=mine.length
-      ? '<span class="hl">'+mine.map(s=>s.weight+'×'+s.reps).join('  ')+'</span>'
-        +(complete?'':' · '+(e.sets-mine.length)+' left')
+      ? '<span class="hl">'+mine.map(s=>s.weight+'×'+s.reps).join('  ')+'</span>'+(complete?'':' · '+(e.sets-mine.length)+' left')
       : last ? 'Last: '+last.sets.map(s=>s.weight+'×'+s.reps).join(', ')
       : 'No history yet';
-    return `<div class="ex" data-i="${i}">
+    return `<div class="ex" data-a="open-ex" data-i="${i}">
       <div class="ex-n ${complete?'done':''}">${complete?'✓':i+1}</div>
       <div class="ex-b">
         <div class="slot-tag ${e.anchor?'anchor':''}">${esc(e.tag)}${e.anchor?' · anchor':''}</div>
@@ -903,24 +877,14 @@ function renderExList(w){
     <div class="top">
       <div><div class="eyebrow">${esc(w.info.deload?'Deload':'Week '+w.info.weekInBlock+' · '+w.info.wave.label)}</div>
       <h1>${esc(w.name)}</h1></div>
-      <button class="btn xs ghost" id="abandon">Discard</button>
+      <button class="btn xs ghost" data-a="discard">Discard</button>
     </div>
     <div class="card" style="padding:14px 16px">
       <div class="card-h" style="margin:0"><h2>${done} of ${w.exercises.length} complete</h2>
       <span class="sub mut">${esc(w.focus)}</span></div>
     </div>
     <div class="card pad0">${rows}</div>
-    <button class="btn primary" id="finish" style="margin-top:4px">Finish workout</button>`;
-
-  el('t-body').querySelectorAll('.ex').forEach(n=>n.onclick=()=>{
-    openEx=+n.dataset.i; renderTrain(); window.scrollTo(0,0);
-  });
-  el('finish').onclick=finishWorkout;
-  el('abandon').onclick=()=>{
-    if(confirm('Discard this workout? Logged sets will be lost.')){
-      ST.active=null; openEx=null; saveActive(); stopTimer(); go('home');
-    }
-  };
+    <button class="btn primary" data-a="finish" style="margin-top:4px">Finish workout</button>`;
 }
 
 function renderExLog(w,i){
@@ -937,7 +901,7 @@ function renderExLog(w,i){
       <div class="fld ${L?'filled':''}">
         <input type="number" inputmode="numeric" class="r"
           placeholder="${e.hi}" value="${L?L.reps:''}"><label>reps</label></div>
-      <button class="tick ${L?'on':''}">${CHECK}</button>
+      <button class="tick ${L?'on':''}" data-a="tick" data-k="${k}">${CHECK}</button>
     </div>`);
   }
   const hist=slotHistory(e.slotId).slice(-8);
@@ -945,169 +909,27 @@ function renderExLog(w,i){
   el('t-body').innerHTML=`
     <div class="top">
       <div><div class="eyebrow">${esc(e.tag)}</div><h1 style="font-size:24px">${esc(e.name)}</h1></div>
-      <button class="btn xs ghost" id="back">Back</button>
+      <button class="btn xs ghost" data-a="back-list">Back</button>
     </div>
     <div class="target">
       <div class="big">${e.sets} × ${e.lo}–${e.hi}${e.uni?' per side':''} · ${e.rest}s rest</div>
       <div class="why">${esc(s.text)}</div>
     </div>
     <div class="row" style="margin-bottom:14px">
-      <button class="btn sm" id="swap">Swap exercise</button>
-      <button class="btn sm ghost" id="addset">Add set</button>
+      <button class="btn sm" data-a="swap-open">Swap exercise</button>
+      <button class="btn sm ghost" data-a="add-set">Add set</button>
     </div>
-    <div class="card">${rows.join('')}</div>
+    <div class="card" id="set-card">${rows.join('')}</div>
     ${hist.length?`<div class="card">
       <div class="card-h"><h2>Slot trend</h2><span class="sub mut">e1RM, all variants</span></div>
       ${sparkline(hist.map(h=>({date:h.date,v:est1rm(best(h.sets))})))}
     </div>`:''}
-    <button class="btn primary" id="doneex">Done — next exercise</button>
-    <button class="btn ghost" id="finish2" style="margin-top:8px">Finish workout</button>`;
-
-  el('back').onclick=()=>{openEx=null;renderTrain()};
-  el('finish2').onclick=finishWorkout;
-  el('swap').onclick=()=>openSwap(i);
-  el('addset').onclick=()=>{e.sets++;saveActive();renderTrain()};
-  el('doneex').onclick=()=>{
-    const nxt=w.exercises.findIndex((x,j)=>j>i && doneCount(x)<x.sets);
-    openEx = nxt>=0?nxt:null; renderTrain(); window.scrollTo(0,0);
-  };
-
-  el('t-body').querySelectorAll('.setrow').forEach(row=>{
-    const k=+row.dataset.k;
-    row.querySelector('.tick').onclick=()=>{
-      const wv=parseFloat(row.querySelector('.w').value);
-      const rv=parseInt(row.querySelector('.r').value,10);
-      if(e.logged[k]){                        // un-log — blank the slot, don't shift others
-        e.logged[k]=null; saveActive(); renderTrain(); return;
-      }
-      if(!Number.isFinite(wv)||!Number.isFinite(rv)){ toast('Enter weight and reps'); return; }
-      if(wv<0||wv>2000){ toast('Check that weight'); return; }
-      if(rv<1||rv>200){ toast('Check those reps'); return; }
-      while(e.logged.length<e.sets) e.logged.push(null);   // keep it dense, never sparse
-      e.logged[k]={weight:wv,reps:rv};
-      saveActive(); buzz(28); startTimer(e.rest); renderTrain();
-    };
-  });
+    <button class="btn primary" data-a="next-ex">Done — next exercise</button>
+    <button class="btn ghost" data-a="finish" style="margin-top:8px">Finish workout</button>`;
 }
 
-const est1rm=s=>s?Math.round(s.weight*(1+s.reps/30)):0;
-
-async function finishWorkout(){
-  const w=ST.active;
-  const logged=w.exercises.filter(e=>doneCount(e)>0);
-  if(!logged.length){ toast('Nothing logged yet'); return; }
-  const sess={
-    id:Date.now(), date:w.date, day:w.day,
-    block:w.info.block, weekInBlock:w.info.weekInBlock,
-    deload:w.info.deload, wave:w.info.wave.label,
-    exercises:logged.map(e=>({slotId:e.slotId,tag:e.tag,exId:e.exId,name:e.name,logged:setsOf(e)})),
-  };
-  try{
-    await putSession(sess);
-  }catch(err){
-    console.error(err); toast('Could not save — try again'); return;
-  }
-  ST.sessions.push(sess); ST.sessions.sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
-  ST.active=null; openEx=null; await saveActive(); stopTimer();
-  const vol=logged.reduce((t,e)=>t+setsOf(e).reduce((x,s)=>x+s.weight*s.reps,0),0);
-  toast('Logged · '+Math.round(vol).toLocaleString()+' lbs total volume');
-  go('home');
-}
-
-/* ============================================================
-   9. SWAP SHEET — the "machine is taken" flow
-   Ranked by: same slot pool first, then equipment variety,
-   then whether you have history (so it can prefill your weight).
-   ============================================================ */
-let swapFilter='all';
-function openSwap(exIndex){
-  const w=ST.active, e=w.exercises[exIndex];
-  const slot=PROGRAM[w.day].slots.find(s=>s.id===e.slotId);
-  renderSwap(slot,e,exIndex);
-}
-function renderSwap(slot,e,exIndex){
-  const recent=ST.sessions.slice(-6).flatMap(s=>s.exercises.map(x=>x.exId));
-  const cands=slot.pool
-    .filter(id=>swapFilter==='all'||LIB[id].e===swapFilter)
-    .map(id=>{
-      const h=lastPerformance(id);
-      return {id,...LIB[id],hist:h,
-        score:(id===e.exId?-100:0)+(h?12:0)-(recent.includes(id)?6:0)};
-    })
-    .sort((a,b)=>b.score-a.score);
-
-  const equips=[...new Set(slot.pool.map(id=>LIB[id].e))];
-  const chips=['all',...equips].map(k=>
-    `<button class="chip ${swapFilter===k?'on':''}" data-eq="${k}">${k==='all'?'All':EQUIP[k]}</button>`).join('');
-
-  const list=cands.map(c=>`
-    <div class="alt" data-id="${c.id}">
-      <div class="alt-b">
-        <h4>${esc(c.n)}</h4>
-        <p>${EQUIP[c.e]}${c.hist?' · last '+c.hist.sets[0].weight+' lbs × '+c.hist.sets[0].reps:' · no history'}</p>
-      </div>
-      ${c.id===e.exId?'<span class="pill cur">Current</span>':c.hist?'<span class="pill hist">Logged</span>':''}
-    </div>`).join('');
-
-  showSheet(`
-    <h2>Swap ${esc(slot.tag)}</h2>
-    <p class="sub">Same movement pattern, so your slot history stays comparable.</p>
-    <div class="chips">${chips}</div>
-    ${list||'<p class="sub mut" style="padding:16px 0">Nothing in this pool matches that equipment.</p>'}
-    <div class="row" style="margin-top:14px">
-      <button class="btn sm ghost" id="sw-pin">Pin as default</button>
-      <button class="btn sm ghost" id="sw-close">Cancel</button>
-    </div>
-    <p class="sub mut" style="margin-top:10px;font-size:12px">Pinning locks this slot to the current exercise and stops the weekly rotation for it.</p>`);
-
-  el('sheet-body').querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
-    swapFilter=c.dataset.eq; renderSwap(slot,e,exIndex);
-  });
-  el('sheet-body').querySelectorAll('.alt').forEach(a=>a.onclick=()=>{
-    const id=a.dataset.id;
-    e.exId=id; e.name=LIB[id].n; e.logged=[];
-    saveActive(); hideSheet(); renderTrain(); toast('Swapped to '+LIB[id].n);
-  });
-  el('sw-pin').onclick=async()=>{
-    ST.pins[e.slotId]=e.exId; await kvSet('pins',ST.pins);
-    hideSheet(); toast(LIB[e.exId].n+' pinned to this slot');
-  };
-  el('sw-close').onclick=hideSheet;
-}
-
-/* ============================================================
-   10. CHARTS — tiny inline SVG, no library
-   ============================================================ */
-function sparkline(pts,unit){
-  if(pts.length<2) return '<p class="sub mut">Log two sessions to see a trend.</p>';
-  const W=320,H=150,P=22;
-  const vs=pts.map(p=>p.v);
-  const min=Math.min(...vs), max=Math.max(...vs), span=(max-min)||1;
-  const x=i=>P+i*(W-2*P)/(pts.length-1);
-  const y=v=>H-P-((v-min)/span)*(H-2*P);
-  const line=pts.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(1)} ${y(p.v).toFixed(1)}`).join(' ');
-  const area=line+` L${x(pts.length-1).toFixed(1)} ${H-P} L${P} ${H-P} Z`;
-  const dots=pts.map((p,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="3" fill="var(--accent)"/>`).join('');
-  return `<svg class="wchart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-    <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="var(--accent)" stop-opacity=".22"/>
-      <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
-    <path d="${area}" fill="url(#g1)"/>
-    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2"
-      stroke-linecap="round" stroke-linejoin="round"/>${dots}
-  </svg>
-  <div class="sub mut" style="display:flex;justify-content:space-between;font-size:11.5px">
-    <span>${fmtDate(pts[0].date)} · ${Math.round(min)}${unit||''}</span>
-    <span>${fmtDate(pts[pts.length-1].date)} · ${Math.round(pts[pts.length-1].v)}${unit||''}</span>
-  </div>`;
-}
-
-/* ============================================================
-   11. PROGRAM TAB — see and edit the slot system
-   ============================================================ */
-let progDay='A';
 function renderProgram(){
-  const info=blockInfo(today());
+  const info=pos();
   const day=PROGRAM[progDay];
   const rows=day.slots.map(slot=>{
     const cur=resolveExercise(slot,info);
@@ -1115,90 +937,38 @@ function renderProgram(){
                     block:info.weekInBlock>=3?info.block+1:info.block};
     const nxt=resolveExercise(slot,nextInfo);
     const pinned=!!ST.pins[slot.id];
-    return `<div class="ex" data-slot="${slot.id}">
+    return `<div class="ex" data-a="slot-open" data-slot="${slot.id}">
       <div class="ex-b">
         <div class="slot-tag ${slot.anchor?'anchor':''}">${esc(slot.tag)}${slot.anchor?' · anchor':' · rotates'}</div>
         <h3>${esc(LIB[cur].n)}${pinned?' 📌':''}</h3>
         <p>${slot.sets}×${info.wave.lo}–${info.wave.hi} · ${slot.rest}s${pinned?' · pinned':(nxt!==cur?' · next: '+esc(LIB[nxt].n):'')}</p>
       </div>${CHEV}</div>`;
   }).join('');
-
   el('p-body').innerHTML=`
     <div class="card" style="padding:14px 16px">
-      <div class="card-h" style="margin:0">
-        <h2>${esc(day.focus)}</h2>
+      <div class="card-h" style="margin:0"><h2>${esc(day.focus)}</h2>
         <span class="sub mut">Block ${info.block+1} · Wk ${info.weekInBlock}</span></div>
     </div>
     <div class="card pad0">${rows}</div>
     <div class="card">
       <div class="card-h"><h2>How rotation works</h2></div>
-      <p class="sub">Anchors hold steady for the whole four-week block so progression stays
-      measurable, then shift to a related variant when the block turns over. The other slots
-      swap at week three. Pin any slot to freeze it.</p>
+      <p class="sub">Anchors hold for a four-week block so progression stays measurable, then
+      shift to a related variant. Other slots swap at week three. A program week is three
+      completed sessions — the calendar doesn't matter. Pin any slot to freeze it.</p>
     </div>`;
-
-  el('p-body').querySelectorAll('.ex').forEach(n=>n.onclick=()=>openSlotSheet(n.dataset.slot));
-}
-document.querySelectorAll('#p-seg button').forEach(b=>b.onclick=()=>{
-  progDay=b.dataset.day;
-  document.querySelectorAll('#p-seg button').forEach(x=>x.classList.toggle('on',x===b));
-  renderProgram();
-});
-
-function openSlotSheet(slotId){
-  const info=blockInfo(today());
-  const slot=PROGRAM[progDay].slots.find(s=>s.id===slotId);
-  const cur=resolveExercise(slot,info);
-  const hist=slotHistory(slotId);
-  const pinned=ST.pins[slotId];
-
-  const pool=slot.pool.map(id=>{
-    const h=lastPerformance(id);
-    return `<div class="alt" data-pin="${id}">
-      <div class="alt-b"><h4>${esc(LIB[id].n)}</h4>
-      <p>${EQUIP[LIB[id].e]}${h?' · '+h.sets.length+' sets logged '+fmtDate(h.date):''}</p></div>
-      ${id===cur?'<span class="pill cur">In rotation</span>':''}
-      ${pinned===id?'<span class="pill hist">Pinned</span>':''}
-    </div>`;
-  }).join('');
-
-  showSheet(`
-    <h2>${esc(slot.tag)}</h2>
-    <p class="sub">${slot.anchor?'Anchor slot — holds for the block, rotates at the boundary.':'Rotating slot — changes at week three.'}</p>
-    ${hist.length>1?`<div style="margin:14px 0">${sparkline(hist.map(h=>({date:h.date,v:est1rm(best(h.sets))})),' e1RM')}</div>`:''}
-    <div class="card-h" style="margin:16px 0 8px"><h2>Pool</h2>
-      <span class="sub mut">Tap to pin</span></div>
-    ${pool}
-    ${pinned?'<button class="btn sm ghost" id="unpin" style="width:100%;margin-top:12px">Unpin — resume rotation</button>':''}`);
-
-  el('sheet-body').querySelectorAll('[data-pin]').forEach(a=>a.onclick=async()=>{
-    ST.pins[slotId]=a.dataset.pin; await kvSet('pins',ST.pins);
-    hideSheet(); renderProgram(); toast('Pinned '+LIB[a.dataset.pin].n);
-  });
-  const un=el('unpin');
-  if(un) un.onclick=async()=>{
-    delete ST.pins[slotId]; await kvSet('pins',ST.pins);
-    hideSheet(); renderProgram(); toast('Rotation resumed');
-  };
 }
 
-/* ============================================================
-   12. BODY
-   ============================================================ */
 function renderBody(){
   const t=today();
   const isWed=parseISO(t).getDay()===3;
   const thisWeek=ST.weights.find(w=>weekStart(w.date)===weekStart(t));
   const sorted=[...ST.weights].sort((a,b)=>a.date.localeCompare(b.date));
-  const latest=sorted[sorted.length-1];
-  const prev=sorted[sorted.length-2];
+  const latest=sorted[sorted.length-1], prev=sorted[sorted.length-2];
   const delta=latest&&prev?(latest.lbs-prev.lbs):null;
-
   const rows=sorted.slice().reverse().map(w=>`
     <div class="li"><div class="li-b">
       <h3 class="num">${w.lbs} lbs</h3><p>${fmtDate(w.date)}</p></div>
-      <button class="btn xs ghost" data-del="${w.date}">Delete</button></div>`).join('');
-
+      <button class="btn xs ghost" data-a="wt-del" data-d="${w.date}">Delete</button></div>`).join('');
   el('b-body').innerHTML=`
     ${isWed&&!thisWeek?`<div class="banner"><p>It's Wednesday — log your weigh-in.</p></div>`:''}
     <div class="card">
@@ -1207,7 +977,7 @@ function renderBody(){
       <div class="setrow" style="border:none;padding:0">
         <div class="fld" style="flex:2"><input type="number" inputmode="decimal" step="0.1"
           id="wt" placeholder="${latest?latest.lbs:'175'}" value="${thisWeek?thisWeek.lbs:''}"><label>lbs</label></div>
-        <button class="btn sm primary" id="wt-save" style="flex:1">Save</button>
+        <button class="btn sm primary" data-a="wt-save" style="flex:1">Save</button>
       </div>
     </div>
     ${sorted.length>1?`<div class="card">
@@ -1216,26 +986,10 @@ function renderBody(){
     ${rows?`<div class="card pad0">${rows}</div>`
       :`<div class="empty"><svg viewBox="0 0 24 24"><path d="M4 17l5-6 4 4 7-8"/></svg>
         <p>No weigh-ins yet.<br>Wednesdays work well — same time, same conditions.</p></div>`}`;
-
-  el('wt-save').onclick=async()=>{
-    const v=parseFloat(el('wt').value);
-    if(!(v>0)||v>1000){ toast('Enter a valid weight'); return; }
-    const date=thisWeek?thisWeek.date:t;
-    await putWeight({date,lbs:v});
-    ST.weights=await allWeights(); renderBody(); toast('Weigh-in saved');
-  };
-  el('b-body').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
-    await delWeight(b.dataset.del); ST.weights=await allWeights(); renderBody();
-  });
 }
 
-/* ============================================================
-   13. HISTORY
-   ============================================================ */
-let histFilter='all';
 function renderHistory(){
-  const list=[...ST.sessions].reverse()
-    .filter(s=>histFilter==='all'||s.day===histFilter);
+  const list=[...ST.sessions].reverse().filter(s=>histFilter==='all'||s.day===histFilter);
   if(!list.length){
     el('hi-body').innerHTML=`<div class="empty">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
@@ -1243,28 +997,118 @@ function renderHistory(){
     return;
   }
   const rows=list.map(s=>{
-    const sets=s.exercises.reduce((t,e)=>t+doneCount(e),0);
-    const vol=s.exercises.reduce((t,e)=>t+setsOf(e).reduce((x,l)=>x+l.weight*l.reps,0),0);
-    return `<div class="li" data-id="${s.id}">
-      <div class="badge ${s.day.toLowerCase()}">${s.day}</div>
+    const sets=(s.exercises||[]).reduce((t,e)=>t+doneCount(e),0);
+    const vol=(s.exercises||[]).reduce((t,e)=>t+setsOf(e).reduce((x,l)=>x+l.weight*l.reps,0),0);
+    return `<div class="li" data-a="sess-open" data-id="${s.id}">
+      <div class="badge ${(s.day||'a').toLowerCase()}">${s.day||'?'}</div>
       <div class="li-b"><h3>${fmtDate(s.date)}</h3>
-      <p>${s.exercises.length} exercises · ${sets} sets · ${Math.round(vol).toLocaleString()} lbs${s.deload?' · deload':''}</p></div>
+      <p>${(s.exercises||[]).length} exercises · ${sets} sets · ${Math.round(vol).toLocaleString()} lbs${s.deload?' · deload':''}</p></div>
       ${CHEV}</div>`;
   }).join('');
   el('hi-body').innerHTML=`<div class="card pad0">${rows}</div>`;
-  el('hi-body').querySelectorAll('.li').forEach(n=>n.onclick=()=>openSession(+n.dataset.id));
 }
-document.querySelectorAll('#hi-seg button').forEach(b=>b.onclick=()=>{
-  histFilter=b.dataset.f;
-  document.querySelectorAll('#hi-seg button').forEach(x=>x.classList.toggle('on',x===b));
-  renderHistory();
-});
+
+function renderSettings(){
+  const info=pos();
+  const deloaded=ST.deloads.includes(info.weekIndex);
+  el('s-body').innerHTML=`
+    <div class="card pad0">
+      <div class="toggle"><span>Rest timer sound</span>
+        <div class="sw ${ST.settings.sound?'on':''}" data-a="setting" data-k="sound"></div></div>
+      <div class="toggle"><span>Haptic feedback</span>
+        <div class="sw ${ST.settings.haptic?'on':''}" data-a="setting" data-k="haptic"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h2>This program week</h2>
+        <span class="sub mut">Block ${info.block+1} · Week ${info.weekInBlock} · Session ${info.sessionInWeek}/3</span></div>
+      <p class="sub" style="margin-bottom:12px">${deloaded
+        ?'Marked as a deload. Two sets per exercise at roughly 60% of your usual load.'
+        :'Running normally. Mark a deload when joints ache, sleep is poor, or weights feel heavy for no reason.'}</p>
+      <button class="btn sm ${deloaded?'':'ghost'}" data-a="deload" style="width:100%">
+        ${deloaded?'Cancel deload':'Deload this week'}</button>
+    </div>
+    <div class="card">
+      <div class="card-h"><h2>Data</h2><span class="sub mut">v${SCHEMA_VERSION}</span></div>
+      <div class="row" style="margin-bottom:8px">
+        <button class="btn sm" data-a="export">Export JSON</button>
+        <button class="btn sm ghost" data-a="import">Import</button>
+      </div>
+      <button class="btn sm danger" data-a="erase" style="width:100%">Erase everything</button>
+      <input type="file" id="file" accept="application/json" hidden>
+    </div>
+    <div class="card">
+      <div class="card-h"><h2>Lift</h2></div>
+      <p class="sub">Alternating half-body sessions, aim for three a week. Program position follows
+      your completed sessions, not the calendar. Four-week blocks, deload on demand.
+      ${ST.sessions.length} sessions logged.</p>
+    </div>`;
+}
+
+/* ---------- 9. SHEETS ---------- */
+function openSwap(){
+  const w=ST.active; if(!w||openEx===null) return;
+  const e=w.exercises[openEx];
+  const slot=PROGRAM[w.day].slots.find(s=>s.id===e.slotId);
+  if(!slot) return;
+  const recent=ST.sessions.slice(-6).flatMap(s=>(s.exercises||[]).map(x=>x.exId));
+  const cands=slot.pool
+    .filter(id=>swapFilter==='all'||(LIB[id]&&LIB[id].e===swapFilter))
+    .map(id=>{
+      const h=lastPerformance(id);
+      return {id,...LIB[id],hist:h,
+        score:(id===e.exId?-100:0)+(h?12:0)-(recent.includes(id)?6:0)};
+    })
+    .sort((a,b)=>b.score-a.score);
+  const equips=[...new Set(slot.pool.map(id=>LIB[id]&&LIB[id].e).filter(Boolean))];
+  const chips=['all',...equips].map(k=>
+    `<button class="chip ${swapFilter===k?'on':''}" data-a="swap-filter" data-eq="${k}">${k==='all'?'All':EQUIP[k]}</button>`).join('');
+  const list=cands.map(c=>`
+    <div class="alt" data-a="swap-to" data-id="${c.id}">
+      <div class="alt-b"><h4>${esc(c.n)}</h4>
+        <p>${EQUIP[c.e]}${c.hist?' · last '+c.hist.sets[0].weight+' lbs × '+c.hist.sets[0].reps:' · no history'}</p></div>
+      ${c.id===e.exId?'<span class="pill cur">Current</span>':c.hist?'<span class="pill hist">Logged</span>':''}
+    </div>`).join('');
+  showSheet(`
+    <h2>Swap ${esc(slot.tag)}</h2>
+    <p class="sub">Same movement pattern, so your slot history stays comparable.</p>
+    <div class="chips">${chips}</div>
+    ${list||'<p class="sub mut" style="padding:16px 0">Nothing in this pool matches that equipment.</p>'}
+    <div class="row" style="margin-top:14px">
+      <button class="btn sm ghost" data-a="swap-pin">Pin as default</button>
+      <button class="btn sm ghost" data-a="sheet-close">Cancel</button>
+    </div>
+    <p class="sub mut" style="margin-top:10px;font-size:12px">Pinning locks this slot to the current exercise and stops rotation for it.</p>`);
+}
+
+function openSlotSheet(slotId){
+  const info=pos();
+  const slot=PROGRAM[progDay].slots.find(s=>s.id===slotId);
+  if(!slot) return;
+  const cur=resolveExercise(slot,info);
+  const hist=slotHistory(slotId);
+  const pinned=ST.pins[slotId];
+  const pool=slot.pool.map(id=>{
+    const h=lastPerformance(id);
+    return `<div class="alt" data-a="slot-pin" data-slot="${slotId}" data-id="${id}">
+      <div class="alt-b"><h4>${esc(LIB[id].n)}</h4>
+      <p>${EQUIP[LIB[id].e]}${h?' · '+h.sets.length+' sets logged '+fmtDate(h.date):''}</p></div>
+      ${id===cur?'<span class="pill cur">In rotation</span>':''}
+      ${pinned===id?'<span class="pill hist">Pinned</span>':''}
+    </div>`;
+  }).join('');
+  showSheet(`
+    <h2>${esc(slot.tag)}</h2>
+    <p class="sub">${slot.anchor?'Anchor slot — holds for the block, rotates at the boundary.':'Rotating slot — changes at week three.'}</p>
+    ${hist.length>1?`<div style="margin:14px 0">${sparkline(hist.map(h=>({date:h.date,v:est1rm(best(h.sets))})),' e1RM')}</div>`:''}
+    <div class="card-h" style="margin:16px 0 8px"><h2>Pool</h2><span class="sub mut">Tap to pin</span></div>
+    ${pool}
+    ${pinned?`<button class="btn sm ghost" data-a="slot-unpin" data-slot="${slotId}" style="width:100%;margin-top:12px">Unpin — resume rotation</button>`:''}`);
+}
 
 function openSession(id){
-  const s=ST.sessions.find(x=>x.id===id);
-  if(!s) return;
-  const body=s.exercises.map(e=>`
-    <div class="ex" data-ex="${e.exId}">
+  const s=ST.sessions.find(x=>x.id===id); if(!s) return;
+  const body=(s.exercises||[]).map(e=>`
+    <div class="ex" data-a="ex-chart" data-ex="${e.exId}">
       <div class="ex-b">
         <div class="slot-tag">${esc(e.tag||'')}</div>
         <h3>${esc(e.name)}</h3>
@@ -1272,189 +1116,205 @@ function openSession(id){
       </div>${CHEV}</div>`).join('');
   showSheet(`
     <h2>${fmtDate(s.date)}</h2>
-    <p class="sub">${PROGRAM[s.day].name} · ${esc(s.wave||'')}${s.deload?' · deload':''} · Block ${(s.block??0)+1} Wk ${s.weekInBlock??'—'}</p>
+    <p class="sub">${PROGRAM[s.day]?PROGRAM[s.day].name:'—'} · ${esc(s.wave||'')}${s.deload?' · deload':''} · Block ${(s.block??0)+1} Wk ${s.weekInBlock??'—'}</p>
     <div class="card pad0" style="margin-top:14px">${body}</div>
-    <button class="btn sm danger" id="del-s" style="width:100%">Delete session</button>`);
-  el('sheet-body').querySelectorAll('[data-ex]').forEach(n=>n.onclick=()=>openExerciseChart(n.dataset.ex));
-  el('del-s').onclick=async()=>{
-    if(!confirm('Delete this session?')) return;
-    await delSession(id); ST.sessions=ST.sessions.filter(x=>x.id!==id);
-    hideSheet(); renderHistory(); toast('Deleted');
-  };
+    <button class="btn sm danger" data-a="sess-del" data-id="${id}" style="width:100%">Delete session</button>`);
 }
+
 function openExerciseChart(exId){
   const pts=[];
-  ST.sessions.forEach(s=>s.exercises.forEach(e=>{
+  ST.sessions.forEach(s=>(s.exercises||[]).forEach(e=>{
     if(e.exId===exId&&doneCount(e)) pts.push({date:s.date,v:est1rm(best(setsOf(e)))});
   }));
   showSheet(`
     <h2>${esc(LIB[exId]?LIB[exId].n:exId)}</h2>
     <p class="sub">Best set per session, as estimated 1RM.</p>
     <div style="margin-top:16px">${sparkline(pts,' lbs')}</div>
-    <button class="btn sm ghost" id="bk" style="width:100%;margin-top:14px">Close</button>`);
-  el('bk').onclick=hideSheet;
+    <button class="btn sm ghost" data-a="sheet-close" style="width:100%;margin-top:14px">Close</button>`);
 }
 
-/* ============================================================
-   14. SETTINGS
-   ============================================================ */
-function renderSettings(){
-  const info=blockInfo(today());
-  const deloaded=ST.deloads.includes(info.weekIndex);
-  el('s-body').innerHTML=`
-    <div class="card pad0">
-      <div class="toggle"><span>Rest timer sound</span>
-        <div class="sw ${ST.settings.sound?'on':''}" data-set="sound"></div></div>
-      <div class="toggle"><span>Haptic feedback</span>
-        <div class="sw ${ST.settings.haptic?'on':''}" data-set="haptic"></div></div>
-    </div>
+/* ---------- 10. ACTIONS — the single routing table ---------- */
+function tickSet(t){
+  const w=ST.active; if(!w||openEx===null) return;
+  const e=w.exercises[openEx];
+  const row=t.closest('.setrow'); if(!row) return;
+  const k=+row.dataset.k;
+  const wIn=row.querySelector('.w'), rIn=row.querySelector('.r');
 
-    <div class="card">
-      <div class="card-h"><h2>This week</h2>
-        <span class="sub mut">Block ${info.block+1} · Week ${info.weekInBlock}</span></div>
-      <p class="sub" style="margin-bottom:12px">${deloaded
-        ? 'Marked as a deload. Two sets per exercise at roughly 60% of your usual load.'
-        : 'Running normally. Mark a deload when joints ache, sleep is poor, or the weights feel heavy for no reason.'}</p>
-      <button class="btn sm ${deloaded?'':'ghost'}" id="deload" style="width:100%">
-        ${deloaded?'Cancel deload':'Deload this week'}</button>
-    </div>
+  if(e.logged[k]){                       // un-log: blank the slot, keep positions
+    e.logged[k]=null; saveActive();
+    t.classList.remove('on');
+    row.querySelectorAll('.fld').forEach(f=>f.classList.remove('filled'));
+    updateLogHeader(e); return;
+  }
+  const wv=parseFloat(wIn.value), rv=parseInt(rIn.value,10);
+  if(!Number.isFinite(wv)||!Number.isFinite(rv)){ toast('Enter weight and reps'); return; }
+  if(wv<0||wv>2000){ toast('Check that weight'); return; }
+  if(rv<1||rv>200){ toast('Check those reps'); return; }
+  while(e.logged.length<e.sets) e.logged.push(null);
+  e.logged[k]={weight:wv,reps:rv};
+  saveActive(); buzz(28); startTimer(e.rest);
+  t.classList.add('on');
+  row.querySelectorAll('.fld').forEach(f=>f.classList.add('filled'));
+  updateLogHeader(e);
+}
+function updateLogHeader(e){
+  // header count on the list screen is rebuilt on back; nothing else to sync here
+}
 
-    <div class="card">
-      <div class="card-h"><h2>Data</h2><span class="sub mut">v${SCHEMA_VERSION}</span></div>
-      <div class="row" style="margin-bottom:8px">
-        <button class="btn sm" id="exp">Export JSON</button>
-        <button class="btn sm ghost" id="imp">Import</button>
-      </div>
-      <button class="btn sm danger" id="clr" style="width:100%">Erase everything</button>
-      <input type="file" id="file" accept="application/json" hidden>
-    </div>
+const ACTIONS={
+  'nav':t=>go(t.dataset.v),
+  'start':t=>{ if(!ST.active) ST.active=buildWorkout(t.dataset.day);
+               saveActive(); openEx=null; go('train'); },
+  'resume':()=>{ openEx=null; go('train'); },
+  'discard':()=>{ if(confirm('Discard this workout? Logged sets will be lost.')){
+      ST.active=null; openEx=null; saveActive(); stopTimer(); go('home'); } },
+  'finish':()=>finishWorkout(),
+  'open-ex':t=>{ openEx=+t.dataset.i; renderTrain(); window.scrollTo(0,0); },
+  'back-list':()=>{ openEx=null; renderTrain(); },
+  'next-ex':()=>{ const w=ST.active; if(!w) return;
+      const nxt=w.exercises.findIndex((x,j)=>j>openEx&&doneCount(x)<x.sets);
+      openEx=nxt>=0?nxt:null; renderTrain(); window.scrollTo(0,0); },
+  'tick':t=>tickSet(t),
+  'add-set':()=>{ const w=ST.active; if(!w||openEx===null) return;
+      w.exercises[openEx].sets++; saveActive(); renderTrain(); },
+  'swap-open':()=>{ swapFilter='all'; openSwap(); },
+  'swap-filter':t=>{ swapFilter=t.dataset.eq; openSwap(); },
+  'swap-to':t=>{ const w=ST.active; if(!w||openEx===null) return;
+      const e=w.exercises[openEx]; const id=t.dataset.id; if(!LIB[id]) return;
+      e.exId=id; e.name=LIB[id].n; e.logged=[];
+      saveActive(); hideSheet(); renderTrain(); toast('Swapped to '+LIB[id].n); },
+  'swap-pin':()=>{ const w=ST.active; if(!w||openEx===null) return;
+      const e=w.exercises[openEx];
+      ST.pins[e.slotId]=e.exId; kvSet('pins',ST.pins);
+      hideSheet(); toast(LIB[e.exId].n+' pinned to this slot'); },
+  'slot-open':t=>openSlotSheet(t.dataset.slot),
+  'slot-pin':t=>{ ST.pins[t.dataset.slot]=t.dataset.id; kvSet('pins',ST.pins);
+      hideSheet(); renderProgram(); toast('Pinned '+LIB[t.dataset.id].n); },
+  'slot-unpin':t=>{ delete ST.pins[t.dataset.slot]; kvSet('pins',ST.pins);
+      hideSheet(); renderProgram(); toast('Rotation resumed'); },
+  'sess-open':t=>openSession(+t.dataset.id),
+  'sess-del':async t=>{ if(!confirm('Delete this session?')) return;
+      const id=+t.dataset.id;
+      try{ await delSession(id); }catch(e){ toast('Delete failed'); return; }
+      ST.sessions=ST.sessions.filter(x=>x.id!==id);
+      hideSheet(); renderHistory(); toast('Deleted'); },
+  'ex-chart':t=>openExerciseChart(t.dataset.ex),
+  'sheet-close':()=>hideSheet(),
+  'wt-save':async()=>{ const v=parseFloat(el('wt').value);
+      if(!(v>0)||v>1000){ toast('Enter a valid weight'); return; }
+      const t=today();
+      const thisWeek=ST.weights.find(w=>weekStart(w.date)===weekStart(t));
+      try{ await putWeight({date:thisWeek?thisWeek.date:t,lbs:v}); }
+      catch(e){ toast('Save failed'); return; }
+      ST.weights=await allWeights(); renderBody(); toast('Weigh-in saved'); },
+  'wt-del':async t=>{ try{ await delWeight(t.dataset.d); }catch(e){ toast('Delete failed'); return; }
+      ST.weights=await allWeights(); renderBody(); },
+  'setting':t=>{ const k=t.dataset.k;
+      ST.settings[k]=!ST.settings[k]; kvSet('settings',ST.settings);
+      t.classList.toggle('on',ST.settings[k]);
+      if(k==='haptic'&&ST.settings[k]) buzz(30);
+      if(k==='sound'&&ST.settings[k]) beep(); },
+  'deload':()=>{ const info=pos(); const wi=info.weekIndex;
+      const on=ST.deloads.includes(wi);
+      ST.deloads=on?ST.deloads.filter(x=>x!==wi):[...ST.deloads,wi];
+      kvSet('deloads',ST.deloads);
+      if(ST.active){
+        const keep=ST.active.exercises;
+        ST.active=buildWorkout(ST.active.day);
+        ST.active.exercises.forEach(e=>{
+          const old=keep.find(o=>o.slotId===e.slotId);
+          if(old){ e.exId=old.exId; e.name=old.name; e.logged=old.logged; }
+        });
+        saveActive();
+      }
+      renderSettings(); toast(on?'Deload cancelled':'Deload week set'); },
+  'export':()=>{ const data={
+        schema_version:SCHEMA_VERSION, exported_at:new Date().toISOString(),
+        settings:ST.settings, deload_weeks:ST.deloads, slot_pins:ST.pins,
+        sessions:ST.sessions, body_weights:ST.weights };
+      const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob); a.download='lift-'+today()+'.json';
+      a.click(); URL.revokeObjectURL(a.href); toast('Exported'); },
+  'import':()=>el('file').click(),
+  'erase':async()=>{ if(!confirm('Erase all sessions, weigh-ins and settings? This cannot be undone.')) return;
+      if(!confirm('Really erase everything?')) return;
+      try{ await Promise.all([
+        req(tx('sessions','readwrite').clear()),
+        req(tx('bodyweights','readwrite').clear()),
+        req(tx('kv','readwrite').clear())]); }
+      catch(e){ toast('Erase failed'); return; }
+      await loadState(); stopTimer(); go('home'); toast('Erased'); },
+};
 
-    <div class="card">
-      <div class="card-h"><h2>Program start</h2></div>
-      <p class="sub" style="margin-bottom:10px">Block and week numbering counts from here.</p>
-      <div class="row">
-        <div class="fld"><input type="date" id="sd" value="${ST.startDate}"></div>
-        <button class="btn sm" id="sd-save" style="flex:0 0 90px">Set</button>
-      </div>
-    </div>
+/* one permanent listener; buttons can never go stale */
+document.addEventListener('click',ev=>{
+  const t=ev.target.closest('[data-a]');
+  if(!t) return;
+  const fn=ACTIONS[t.dataset.a];
+  if(!fn) return;
+  try{ const r=fn(t,ev); if(r&&r.catch) r.catch(err=>{console.error(err);toast('Error — data is safe');}); }
+  catch(err){ console.error(err); toast('Error — data is safe'); }
+});
 
-    <div class="card">
-      <div class="card-h"><h2>Lift</h2></div>
-      <p class="sub">Three days a week, Monday / Wednesday / Friday. Lift A and Lift B alternate
-      so every movement pattern gets trained about one and a half times per week.
-      Four-week blocks, deload on demand. ${ST.sessions.length} sessions logged.</p>
-    </div>`;
-
-  el('s-body').querySelectorAll('[data-set]').forEach(s=>s.onclick=async()=>{
-    const k=s.dataset.set;
-    ST.settings[k]=!ST.settings[k];
-    await kvSet('settings',ST.settings);
-    s.classList.toggle('on',ST.settings[k]);
-    if(k==='haptic'&&ST.settings[k]) buzz(30);
-    if(k==='sound'&&ST.settings[k]) beep();
-  });
-
-  el('deload').onclick=async()=>{
-    const wi=info.weekIndex;
-    ST.deloads=deloaded?ST.deloads.filter(x=>x!==wi):[...ST.deloads,wi];
-    await kvSet('deloads',ST.deloads);
-    if(ST.active){                       // rebuild the in-progress session at new intensity
-      const keep=ST.active.exercises;
-      ST.active=buildWorkout(ST.active.date,ST.active.day);
-      ST.active.exercises.forEach(e=>{
-        const old=keep.find(o=>o.slotId===e.slotId);
-        if(old){ e.exId=old.exId; e.name=old.name; e.logged=old.logged; }
-      });
-      await saveActive();
-    }
-    renderSettings(); toast(deloaded?'Deload cancelled':'Deload week set');
-  };
-
-  el('exp').onclick=async()=>{
-    const data={
-      schema_version:SCHEMA_VERSION,
-      exported_at:new Date().toISOString(),
-      start_date:ST.startDate,
-      settings:ST.settings,
-      deload_weeks:ST.deloads,
-      slot_pins:ST.pins,
-      sessions:ST.sessions,
-      body_weights:ST.weights,
-    };
-    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(blob);
-    a.download='lift-'+today()+'.json';
-    a.click(); URL.revokeObjectURL(a.href);
-    toast('Exported');
-  };
-
-  el('imp').onclick=()=>el('file').click();
-  el('file').onchange=async ev=>{
-    const f=ev.target.files[0]; if(!f) return;
-    try{
-      const d=JSON.parse(await f.text());
-      if(!confirm('Import will merge into your current data. Continue?')) return;
+/* static bindings — these elements exist once, in the shell */
+document.querySelectorAll('nav button').forEach(b=>{b.dataset.a='nav';});
+document.querySelectorAll('#p-seg button').forEach(b=>b.addEventListener('click',()=>{
+  progDay=b.dataset.day;
+  document.querySelectorAll('#p-seg button').forEach(x=>x.classList.toggle('on',x===b));
+  guard('prog',renderProgram);
+}));
+document.querySelectorAll('#hi-seg button').forEach(b=>b.addEventListener('click',()=>{
+  histFilter=b.dataset.f;
+  document.querySelectorAll('#hi-seg button').forEach(x=>x.classList.toggle('on',x===b));
+  guard('hist',renderHistory);
+}));
+el('timer-skip').addEventListener('click',stopTimer);
+el('timer-add').addEventListener('click',()=>{
+  timerEnd+=30000; timerTotal+=30; kvSet('timer',{end:timerEnd,total:timerTotal}); tickTimer();
+});
+el('scrim').addEventListener('click',hideSheet);
+document.addEventListener('change',ev=>{
+  if(ev.target.id!=='file') return;
+  const f=ev.target.files[0]; if(!f) return;
+  f.text().then(txt=>{
+    const d=JSON.parse(txt);
+    if(!confirm('Import will merge into your current data. Continue?')) return;
+    return (async()=>{
       for(const s of (d.sessions||[])) await putSession(s);
       for(const w of (d.body_weights||[])) await putWeight(w);
-      if(d.start_date) await kvSet('startDate',d.start_date);
       if(d.slot_pins) await kvSet('pins',d.slot_pins);
       if(d.deload_weeks) await kvSet('deloads',d.deload_weeks);
       await loadState(); go('home'); toast('Imported');
-    }catch(e){ toast('Could not read that file'); }
-    ev.target.value='';
-  };
+    })();
+  }).catch(()=>toast('Could not read that file'))
+    .finally(()=>{ ev.target.value=''; });
+});
 
-  el('clr').onclick=async()=>{
-    if(!confirm('Erase all sessions, weigh-ins and settings? This cannot be undone.')) return;
-    if(!confirm('Really erase everything?')) return;
-    await Promise.all([
-      idbReq(tx('sessions','readwrite').clear()),
-      idbReq(tx('bodyweights','readwrite').clear()),
-      idbReq(tx('kv','readwrite').clear()),
-    ]);
-    await loadState(); stopTimer(); go('home'); toast('Erased');
-  };
-
-  el('sd-save').onclick=async()=>{
-    const v=el('sd').value; if(!v) return;
-    ST.startDate=v; await kvSet('startDate',v);
-    renderSettings(); toast('Start date updated');
-  };
-}
-
-/* ============================================================
-   15. BOOT
-   ============================================================ */
+/* ---------- 11. BOOT ---------- */
 async function loadState(){
-  const [sessions,weights,settings,pins,deloads,startDate,active,timer]=await Promise.all([
+  const [sessions,weights,settings,pins,deloads,active,timer]=await Promise.all([
     allSessions(), allWeights(),
     kvGet('settings',{sound:true,haptic:true}),
     kvGet('pins',{}), kvGet('deloads',[]),
-    kvGet('startDate',null), kvGet('active',null), kvGet('timer',null),
+    kvGet('active',null), kvGet('timer',null),
   ]);
-  // repair records saved before positional sets were made null-safe
   const fix=e=>{ e.logged=Array.isArray(e.logged)
     ? Array.from(e.logged,x=>(x&&typeof x.weight==='number'&&typeof x.reps==='number')?x:null)
     : []; return e; };
   sessions.forEach(s=>{ if(Array.isArray(s.exercises)) s.exercises.forEach(fix); });
   if(active&&Array.isArray(active.exercises)) active.exercises.forEach(fix);
   ST.sessions=sessions.sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
-  ST.weights=weights;
-  ST.settings=settings; ST.pins=pins; ST.deloads=deloads;
-  ST.active=active;
-  if(!startDate){ ST.startDate=weekStart(today()); await kvSet('startDate',ST.startDate); }
-  else ST.startDate=startDate;
-  // restore a rest timer that was running when the app was backgrounded
-  if(timer && timer.end>Date.now()){
+  ST.weights=weights||[];
+  ST.settings=settings; ST.pins=pins||{}; ST.deloads=deloads||[];
+  ST.active=active||null;
+  if(timer&&timer.end>Date.now()){
     timerEnd=timer.end; timerTotal=timer.total;
-    el('timer').classList.add('on'); document.body.classList.add('timer-on'); tickTimer();
-    clearInterval(timerInt); timerInt=setInterval(tickTimer,250);
+    el('timer').classList.add('on'); document.body.classList.add('timer-on');
+    tickTimer(); clearInterval(timerInt); timerInt=setInterval(tickTimer,250);
   }
 }
-
-document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&timerEnd) tickTimer(); });
-
 (async function init(){
   try{
     await openDB();
